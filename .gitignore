@@ -4,3 +4,7 @@ design/
 .base-ast/
 upstream/
 .DS_Store
+windows/src-tauri/target/
+windows/src-tauri/gen/
+windows/tools/node_modules/
+windows/tools/package-lock.json

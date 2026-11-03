@@ -1,0 +1,68 @@
+name: windows
+on:
+  push:
+    branches: [windows-port, main]
+    paths: ['windows/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+jobs:
+  build-test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows/src-tauri
+      - name: Build app
+        working-directory: windows
+        run: npx --yes "@tauri-apps/cli@2" build --no-bundle
+      - name: Build installer
+        continue-on-error: true
+        working-directory: windows
+        run: npx --yes "@tauri-apps/cli@2" build --bundles nsis
+      - name: Package
+        run: |
+          New-Item -ItemType Directory -Force dist/Stats | Out-Null
+          Copy-Item windows/src-tauri/target/release/stats-windows.exe dist/Stats/Stats.exe
+          Copy-Item LICENSE dist/Stats/LICENSE.txt
+          Copy-Item windows/README.md dist/Stats/README.txt
+          Compress-Archive -Path dist/Stats -DestinationPath dist/Stats-windows.zip
+          $setup = Get-ChildItem windows/src-tauri/target/release/bundle/nsis/*.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($setup) { Copy-Item $setup.FullName dist/Stats-Setup.exe }
+          Get-ChildItem dist -File | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } | Set-Content dist/SHA256SUMS-windows.txt
+          Get-Content dist/SHA256SUMS-windows.txt
+      - name: Screenshots of the real window
+        run: |
+          $exe = (Resolve-Path dist/Stats/Stats.exe).Path
+          ./windows/tools/shot.ps1 -Exe $exe -Name panel-light -View "panel;theme=light"
+          ./windows/tools/shot.ps1 -Exe $exe -Name panel-dark -View "panel;theme=dark"
+          ./windows/tools/shot.ps1 -Exe $exe -Name panel-cpu-open -View "panel;theme=light;expand=cpu"
+          ./windows/tools/shot.ps1 -Exe $exe -Name settings-look -View "settings;tab=0;theme=light"
+          ./windows/tools/shot.ps1 -Exe $exe -Name settings-general-dark -View "settings;tab=2;theme=dark"
+      - name: Every feature, in the real app
+        run: |
+          $exe = (Resolve-Path dist/Stats/Stats.exe).Path
+          Push-Location windows/tools; npm install --no-audit --no-fund; Pop-Location
+          $env:STATS_TEST = "panel"
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
+          $p = Start-Process -FilePath $exe -PassThru
+          node windows/tools/e2e.mjs shots/e2e
+          $code = $LASTEXITCODE
+          taskkill /T /F /PID $p.Id | Out-Null
+          exit $code
+      - name: CPU and memory use
+        run: |
+          $exe = (Resolve-Path dist/Stats/Stats.exe).Path
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = ""
+          ./windows/tools/measure.ps1 -Exe $exe -Name closed -View ""
+          ./windows/tools/measure.ps1 -Exe $exe -Name open -View "panel"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-results
+          path: |
+            dist/
+            shots/
