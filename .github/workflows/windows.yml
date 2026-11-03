@@ -56,7 +56,7 @@ jobs:
           $exe = (Resolve-Path dist/Stats/Stats.exe).Path
           Push-Location windows/tools; npm install --no-audit --no-fund; Pop-Location
           $env:STATS_TEST = "panel"
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
+          $env:STATS_DEBUG_PORT = "9222"
           $p = Start-Process -FilePath $exe -PassThru
           node windows/tools/e2e.mjs shots/e2e
           $code = $LASTEXITCODE
@@ -65,7 +65,7 @@ jobs:
       - name: CPU and memory use
         run: |
           $exe = (Resolve-Path dist/Stats/Stats.exe).Path
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = ""
+          $env:STATS_DEBUG_PORT = ""
           ./windows/tools/measure.ps1 -Exe $exe -Name closed -View ""
           ./windows/tools/measure.ps1 -Exe $exe -Name open -View "panel"
       - uses: actions/upload-artifact@v4

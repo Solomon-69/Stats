@@ -78,9 +78,11 @@ await settings.click('[data-sw="mod.network"]'); await sleep(2600);
 check('switching it on brings it back', !!(await panel.$('.tile[data-id=network]')));
 
 check('tab General', (await nav(2)) === 'General'); await settings.screenshot({ path: `${out}/settings-general.png` });
-await settings.click('[data-seg=speed] button[data-v=bits]'); await sleep(2800);
-check('Mbps shows bits', /bps/.test(await sub('network')) || /bps/.test(await big('network')), await sub('network'));
-await settings.click('[data-seg=speed] button[data-v=bytes]'); await sleep(300);
+await sleep(2500);
+check('Mbps is the default (shows bits)', /bps/.test(await sub('network')) || /bps/.test(await big('network')), await sub('network'));
+await settings.click('[data-seg=speed] button[data-v=bytes]'); await sleep(2800);
+check('MB/s shows bytes', /B\/s/.test(await sub('network')) && !/bps/.test(await sub('network')), await sub('network'));
+await settings.click('[data-seg=speed] button[data-v=bits]'); await sleep(300);
 for (const v of ['1', '5', '10', '2']) { await settings.click(`[data-seg=refresh] button[data-v="${v}"]`); await sleep(250); }
 check('refresh saved', (await settings.evaluate(() => JSON.parse(localStorage.getItem('stats.prefs')).refresh)) === 2);
 await settings.click('[data-seg=temp] button[data-v=f]'); await settings.click('[data-seg=temp] button[data-v=c]');

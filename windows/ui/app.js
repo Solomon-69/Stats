@@ -14,7 +14,7 @@
   let testView = null;
 
   // ---------- preferences ----------
-  const DEF = { appearance: 'auto', accent: 0, icon: 'bars', mods: {}, temp: 'c', speed: 'bytes', refresh: 2, alerts: true, checks: true };
+  const DEF = { appearance: 'auto', accent: 0, icon: 'bars', mods: {}, temp: 'c', speed: 'bits', refresh: 2, alerts: true, checks: true };
   const load = () => { try { return { ...DEF, ...JSON.parse(localStorage.getItem('stats.prefs') || '{}') }; } catch { return { ...DEF }; } };
   let P = load();
   const save = () => { try { localStorage.setItem('stats.prefs', JSON.stringify(P)); } catch {} T.event.emit('prefs-changed', {}); };
@@ -114,7 +114,7 @@
         return { mid: big(pct(s.cpu)), spark: spark([{ v: H.cpu, color: TINT.cpu }], 1), sub, bar: segs(s.cpu, TINT.cpu) };
       },
       detail: (s) => dh('Each core') + `<div class="cores" style="--tint:${TINT.cpu}">${s.cores.map((c) => `<i><b style="height:${Math.max(4, c * 100)}%"></b></i>`).join('')}</div>` + dh('Busiest apps') + procList(s.top_cpu, false) },
-    { id: 'memory', title: 'Memory used', avail: () => true,
+    { id: 'memory', title: 'Memory', avail: () => true,
       body(s) {
         const f = s.mem_used / Math.max(s.mem_total, 1);
         const p = pressure(s);

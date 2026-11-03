@@ -278,6 +278,15 @@ fn start_live_icon(app: AppHandle) {
     });
 }
 
+/// Browser arguments for the web view. Test runs add a debugging port so the real screens can be driven by a script.
+fn browser_args() -> String {
+    let mut a = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection");
+    if let Ok(port) = std::env::var("STATS_DEBUG_PORT") {
+        a.push_str(&format!(" --remote-debugging-port={port} --remote-allow-origins=*"));
+    }
+    a
+}
+
 fn crash_log(msg: &str) {
     let path = std::env::temp_dir().join("stats-crash.log");
     let _ = std::fs::write(path, msg);
@@ -317,6 +326,7 @@ fn main() {
                 .always_on_top(!testing)
                 .visible(false)
                 .focused(false)
+                .additional_browser_args(&browser_args())
                 .build()?;
             {
                 let h = handle.clone();
@@ -338,6 +348,7 @@ fn main() {
                 .maximizable(false)
                 .center()
                 .visible(false)
+                .additional_browser_args(&browser_args())
                 .build()?;
             {
                 let s2 = settings.clone();
