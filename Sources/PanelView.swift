@@ -124,10 +124,10 @@ struct PanelView: View {
 
     private var footer: some View {
         HStack {
-            Button(action: onSettings) { Label("Settings", systemImage: "slider.horizontal.3").font(.system(size: 12, weight: .medium)) }
+            Button(action: onSettings) { Label("Settings", systemImage: "slider.horizontal.3").font(.system(size: 12.5, weight: .semibold)) }
                 .buttonStyle(QuietButtonStyle()).noFocusRing()
             Spacer()
-            Button(action: onQuit) { Text("Quit").font(.system(size: 12, weight: .medium)) }.buttonStyle(QuietButtonStyle()).noFocusRing()
+            Button(action: onQuit) { Text("Quit").font(.system(size: 12.5, weight: .semibold)) }.buttonStyle(QuietButtonStyle()).noFocusRing()
         }
     }
 }

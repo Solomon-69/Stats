@@ -354,3 +354,13 @@ final class SelfMeter {
         return (cpu, Double(ru.ri_phys_footprint))
     }
 }
+
+/// Facts about the machine that never change while it runs.
+enum Hardware {
+    static let hasFans: Bool = !SensorReader().fans().isEmpty
+    static let hasBattery: Bool = {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        defer { if service != 0 { IOObjectRelease(service) } }
+        return service != 0
+    }()
+}

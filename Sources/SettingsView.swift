@@ -14,7 +14,7 @@ enum SettingsTab: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var title: String { ["Look", "What to watch", "General", "About"][rawValue] }
     var blurb: String {
-        ["Light or dark, the menu bar icon, units and refresh", "Pick the tiles the panel shows", "Starting up and alerts", "What Stats costs your Mac"][rawValue]
+        ["Light or dark, and the menu bar icon", "Pick the tiles the panel shows", "Starting up, alerts, units and refresh", "What Stats costs your Mac"][rawValue]
     }
     var symbol: String { ["paintpalette.fill", "square.grid.2x2.fill", "gearshape.fill", "info.circle.fill"][rawValue] }
     var tint: Color { Pal.brand }   // every tab and page shares the app's graphite colour, so switching tabs never changes colour
@@ -58,7 +58,7 @@ struct SettingsView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
-                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 38, height: 38)
+                Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).antialiased(true).frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Stats").font(.system(size: 17, weight: .bold)).tracking(-0.3).foregroundStyle(Pal.ink)
                     Text("Settings").font(.system(size: 11)).foregroundStyle(Pal.mute)
@@ -83,7 +83,7 @@ struct SettingsView: View {
             banner(tab)
             switch tab {
             case .look: look
-            case .modules: ForEach(ModuleID.allCases) { m in moduleCard(m) }
+            case .modules: ForEach(ModuleID.allCases.filter(\.availableHere)) { m in moduleCard(m) }
             case .general: general
             case .about: about
             }
@@ -120,10 +120,12 @@ struct SettingsView: View {
         .modifier(pill("accent"))
         iconCard(t)
             .modifier(pill("icon"))
-        pickerCard(symbol: "waveform.path.ecg", title: "Live graph shows", subtitle: "What the Live graph icon follows in the menu bar.", tint: t) {
-            ChipRow(options: ModuleID.liveChoices, selected: prefs.iconSource, label: { $0.liveLabel }, tint: t) { prefs.iconSource = $0 }
+        if prefs.mainIcon == .live {
+            pickerCard(symbol: "waveform.path.ecg", title: "Live graph shows", subtitle: "What the Live graph icon follows in the menu bar.", tint: t) {
+                ChipRow(options: ModuleID.liveChoices, selected: prefs.iconSource, label: { $0.liveLabel }, tint: t) { prefs.iconSource = $0 }
+            }
+            .modifier(pill("iconsource"))
         }
-        .modifier(pill("iconsource"))
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 RowLabel(symbol: "circle.hexagongrid.fill", title: "Icon shows effort",
@@ -143,8 +145,6 @@ struct SettingsView: View {
         .padding(12)
         .tileStyle(t, radius: 14)
         .modifier(pill("icontint"))
-        units
-        updates
     }
 
     /// Every look the main menu bar icon can take, drawn by the real menu bar code so the picture is what you get.
@@ -167,7 +167,7 @@ struct SettingsView: View {
                                     .frame(width: icon.width, height: 24)
                             } else {
                                 MainIconPreview(icon: icon, values: monitor.iconSeries(prefs.iconSource), cpu: monitor.cpu.total,
-                                                tint: prefs.iconTinted ? NSColor(monitor.status.tint) : nil)
+                                                tint: on ? NSColor(Pal.panel) : (prefs.iconTinted ? NSColor(monitor.status.tint) : nil))
                                     .frame(width: icon.width, height: 24)
                             }
                         }
@@ -193,7 +193,7 @@ struct SettingsView: View {
     }
 
     @ViewBuilder private var updates: some View {
-        pickerCard(symbol: "timer", title: "Refresh every", subtitle: "How often the menu bar numbers update. The open panel always updates every second.", tint: SettingsTab.look.tint) {
+        pickerCard(symbol: "timer", title: "Refresh every", subtitle: "How often the menu bar numbers update. The open panel updates every two seconds.", tint: SettingsTab.look.tint) {
             NumberChipDrum(title: "Refresh", value: prefs.refresh, values: Array(1...60), presets: [1, 2, 3, 5, 10, 30],
                            tint: SettingsTab.look.tint, label: { $0 == 1 ? "1 second" : "\($0) seconds" }, short: { "\($0)" }) { prefs.refresh = $0 }
         }
@@ -229,6 +229,8 @@ struct SettingsView: View {
             SmoothSwitch(isOn: prefs.internetChecks, title: "Internet checks", tint: Pal.blue) { prefs.internetChecks = $0 }
         }
         .modifier(pill("checks"))
+        units
+        updates
     }
 
     /// A made-up minute of readings so the Live graph sample always looks like a graph.

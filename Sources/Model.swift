@@ -81,6 +81,14 @@ enum ModuleID: String, CaseIterable, Identifiable, Codable {
 
 extension ModuleID {
     /// What the Live graph menu bar icon can follow, with short labels for the picker.
+    /// Parts this Mac really has: a MacBook Air has no fans, a desktop has no battery. Settings only lists what exists.
+    var availableHere: Bool {
+        switch self {
+        case .fans: return Hardware.hasFans
+        case .battery: return Hardware.hasBattery
+        default: return true
+        }
+    }
     static let liveChoices: [ModuleID] = [.cpu, .gpu, .memory, .diskio, .network, .sensors]
     var liveLabel: String {
         switch self {
@@ -207,7 +215,7 @@ final class Monitor: ObservableObject {
     }
     /// Seconds between samples: once a second while the panel is open so the graphs glide, the chosen refresh otherwise.
     var interval: TimeInterval {
-        if visible { return 1 }
+        if visible { return 2 }
         // Low Power Mode: wake less often while nothing is on screen.
         return ProcessInfo.processInfo.isLowPowerModeEnabled ? max(5, TimeInterval(prefs.refresh)) : TimeInterval(max(1, prefs.refresh))
     }

@@ -20,12 +20,13 @@ import SwiftUI
 
     /// Every setting in the order the pages show them.
     var rows: [Row] {
-        var r: [Row] = [Row(id: "appearance", tab: .look), Row(id: "accent", tab: .look), Row(id: "icon", tab: .look), Row(id: "iconsource", tab: .look), Row(id: "icontint", tab: .look),
-                       Row(id: "unit.temp", tab: .look), Row(id: "unit.speed", tab: .look), Row(id: "refresh", tab: .look)]
-        for m in ModuleID.allCases {
+        var r: [Row] = [Row(id: "appearance", tab: .look), Row(id: "accent", tab: .look), Row(id: "icon", tab: .look), Row(id: "icontint", tab: .look)]
+        if prefs.mainIcon == .live, let i = r.firstIndex(where: { $0.id == "icontint" }) { r.insert(Row(id: "iconsource", tab: .look), at: i) }
+        for m in ModuleID.allCases.filter(\.availableHere) {
             r.append(Row(id: "mod.\(m.rawValue).show", tab: .modules))
         }
-        r += [Row(id: "login", tab: .general), Row(id: "alerts", tab: .general), Row(id: "checks", tab: .general)]
+        r += [Row(id: "login", tab: .general), Row(id: "alerts", tab: .general), Row(id: "checks", tab: .general),
+                Row(id: "unit.temp", tab: .general), Row(id: "unit.speed", tab: .general), Row(id: "refresh", tab: .general)]
         r.append(Row(id: "update", tab: .about))
         return r
     }

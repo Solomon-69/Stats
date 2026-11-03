@@ -172,9 +172,10 @@ struct QuietButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12))
-            .foregroundStyle(hover ? Pal.ink : Pal.mute)
-            .padding(.horizontal, 6).padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Pal.box.opacity(hover ? 1 : 0)))
+            .foregroundStyle(Pal.ink)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Pal.box.opacity(hover ? 1 : 0.7)))
+            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Pal.line, lineWidth: 1))
             .animation(.easeOut(duration: 0.14), value: hover)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(duration: 0.2), value: configuration.isPressed)
