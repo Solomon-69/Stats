@@ -127,6 +127,19 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
         return Double(b - m.b) * 8 / dt / 1e6
     }
 
+    /// Only a real answer counts: a rate-limited or refused reply (429, 403...) must not look like a 0 Mbps result.
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        if let h = response as? HTTPURLResponse, h.statusCode != 200 { completionHandler(.cancel) } else { completionHandler(.allow) }
+    }
+
+    #if STATS_TEST
+    /// Test hook: show a made-up state so the card can be drawn in every phase without using the network.
+    func testSet(phase: Phase, live: Double, down: Double?, up: Double?, ping: Double?, progress: Double) {
+        self.phase = phase; liveMbps = live; downMbps = down; upMbps = up; pingMs = ping; self.progress = progress
+    }
+    #endif
+
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         lock.lock(); bytes += data.count; lock.unlock()
     }

@@ -258,94 +258,139 @@ struct ModuleTile: View {
 
 // MARK: - Details
 
-/// The speed test card. It always takes the same space (a fixed frame), so starting, running and finishing a test
-/// never moves anything below it. Ring on the left shows the live speed, the right side shows the phase and results.
+/// One digit that rolls vertically like the scroll-wheel pickers: a strip of 0-9 slides behind a window with a springy
+/// settle (a little overshoot), and the edges fade out.
+struct RollDigit: View {
+    let digit: Int
+    let size: CGFloat
+    let reduceMotion: Bool
+    var body: some View {
+        let h = size * 1.25
+        VStack(spacing: 0) {
+            ForEach(0..<10, id: \.self) { n in
+                Text("\(n)").font(.mono(size, .semibold)).foregroundStyle(Pal.ink).frame(width: size * 0.62, height: h)
+            }
+        }
+        .offset(y: -CGFloat(digit) * h + 4.5 * h)
+        .animation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.5, dampingFraction: 0.62), value: digit)
+        .frame(width: size * 0.62, height: h, alignment: .center)
+        .frame(height: h)
+        .mask(
+            LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.22),
+                                   .init(color: .black, location: 0.78), .init(color: .clear, location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+        )
+        .clipped()
+    }
+}
+
+/// A whole number made of rolling digits (right-aligned, so the ones column always stays put).
+struct RollNumber: View {
+    let value: Int
+    let size: CGFloat
+    var digits = 4
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lastTick = Date.distantPast
+
+    var body: some View {
+        let v = max(0, min(value, Int(pow(10.0, Double(digits))) - 1))
+        let text = String(v)
+        HStack(spacing: 0) {
+            ForEach(0..<digits, id: \.self) { i in
+                let place = digits - 1 - i
+                let hasDigit = text.count > place
+                let d = hasDigit ? Int(String(Array(text)[text.count - 1 - place]))! : 0
+                RollDigit(digit: d, size: size, reduceMotion: reduceMotion)
+                    .opacity(hasDigit ? 1 : 0)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: hasDigit)
+            }
+        }
+        .onChange(of: value) { _, _ in
+            // A faint trackpad tick as the wheel turns, at most a few times a second.
+            guard Date().timeIntervalSince(lastTick) > 0.18 else { return }
+            lastTick = Date()
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(v) megabits a second")
+    }
+}
+
+/// The speed test block. It always takes the same space (a fixed frame), so starting, running and finishing a test never
+/// moves anything below it. Left: Ping, Down, Up rows with a thin progress line on the active one. Right: the big result
+/// number as a rolling wheel, with the Test button as a small round button that swaps to Stop in the same spot.
 private struct SpeedTestRows: View {
     @ObservedObject var speed: SpeedTest
     let bits: Bool
     let tint: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    static let height: CGFloat = 92
+    static let height: CGFloat = 76
 
     private var running: Bool { speed.running }
     private var finished: Bool { speed.phase == .done }
-    /// Ring fill: the run's progress while testing, full when done, empty otherwise.
-    private var fill: Double { finished ? 1 : (running ? max(0.04, speed.progress) : 0) }
-    private var phaseTint: Color { speed.phase == .up ? Pal.second : tint }
-    private var centreValue: Double { running ? speed.liveMbps : (speed.downMbps ?? 0) }
-    private var spring: Animation { reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.42, dampingFraction: 0.82) }
+    private var big: Int { Int((running ? speed.liveMbps : (speed.downMbps ?? 0)).rounded()) }
+    private var spring: Animation { reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.4, dampingFraction: 0.82) }
 
     var body: some View {
-        HStack(spacing: 12) {
-            ring
-            VStack(alignment: .leading, spacing: 6) {
-                phases
-                results
-                Button(running ? "Stop test" : (speed.phase == .idle || speed.phase == .failed ? "Test speed" : "Test again")) {
-                    speed.running ? speed.cancel() : speed.start()
-                }.buttonStyle(QuietButtonStyle())
+        HStack(alignment: .center, spacing: 14) {
+            VStack(spacing: 5) {
+                row("Ping", value: speed.pingMs.map { String(format: "%.0f ms", $0) }, active: running && speed.phase == .down && speed.progress < 0.04, progress: speed.pingMs != nil ? 1 : 0, color: tint)
+                row("Down", value: speed.downMbps.map { String(format: "%.0f Mbps", $0) }, active: speed.phase == .down, progress: speed.phase == .down ? speed.progress : (speed.downMbps != nil ? 1 : 0), color: tint)
+                row("Up", value: speed.upMbps.map { String(format: "%.0f Mbps", $0) }, active: speed.phase == .up, progress: speed.phase == .up ? speed.progress : (speed.upMbps != nil ? 1 : 0), color: Pal.second)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
+            ZStack(alignment: .topTrailing) {
+                VStack(alignment: .trailing, spacing: 0) {
+                    RollNumber(value: big, size: 30)
+                    Text(speed.phase == .failed ? "no connection" : (running ? "Mbps live" : (finished ? "Mbps down" : "Mbps")))
+                        .font(.mono(9)).foregroundStyle(speed.phase == .failed ? Pal.warn : Pal.mute)
+                        .contentTransition(.opacity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                button
+            }
+            .frame(width: 118, height: Self.height)
         }
         .frame(height: Self.height)
         .padding(.top, 2)
         .animation(spring, value: speed.phase)
     }
 
-    private var ring: some View {
-        ZStack {
-            Circle().stroke(Pal.line, lineWidth: 6)
-            Circle().trim(from: 0, to: fill)
-                .stroke(phaseTint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(reduceMotion ? nil : .linear(duration: 0.3), value: fill)
-            VStack(spacing: 0) {
-                Text(String(format: "%.0f", centreValue))
-                    .font(.mono(17, .semibold)).foregroundStyle(Pal.ink)
-                    .contentTransition(.numericText(value: centreValue))
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: Int(centreValue))
-                Text("Mbps").font(.mono(8.5)).foregroundStyle(Pal.mute)
+    private var button: some View {
+        Button { speed.running ? speed.cancel() : speed.start() } label: {
+            ZStack {
+                Circle().fill(running ? Pal.box : tint.opacity(0.16))
+                Image(systemName: running ? "stop.fill" : (speed.phase == .idle ? "play.fill" : "arrow.clockwise"))
+                    .font(.system(size: 9.5, weight: .bold)).foregroundStyle(running ? Pal.ink : tint)
+                    .id(running)
+                    .transition(.scale(scale: 0.5).combined(with: .opacity))
+            }
+            .frame(width: 26, height: 26)
+            .overlay(Circle().strokeBorder(Pal.line, lineWidth: 1))
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(running ? "Stop test" : "Test speed")
+        .accessibilityLabel(running ? "Stop speed test" : "Test speed")
+    }
+
+    private func row(_ title: String, value: String?, active: Bool, progress: Double, color: Color) -> some View {
+        VStack(spacing: 2) {
+            HStack {
+                Text(title).font(.system(size: 11, weight: active ? .semibold : .medium)).foregroundStyle(active ? Pal.ink : Pal.mute)
+                Spacer(minLength: 6)
+                Text(value ?? (active ? "…" : "–")).font(.mono(10.5, .medium)).foregroundStyle(value != nil ? Pal.ink : Pal.mute)
+                    .contentTransition(.opacity)
+            }
+            ZStack(alignment: .leading) {
+                Capsule().fill(Pal.line.opacity(active ? 1 : 0.5)).frame(height: 2)
+                GeometryReader { g in
+                    Capsule().fill(color).frame(width: g.size.width * min(max(progress, 0), 1), height: 2)
+                        .animation(reduceMotion ? nil : .linear(duration: 0.3), value: progress)
+                }.frame(height: 2)
             }
         }
-        .frame(width: 74, height: 74)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Speed test")
-        .accessibilityValue(String(format: "%.0f megabits a second", centreValue))
-    }
-
-    /// Ping, Down, Up: the active one is bright, finished ones stay readable, the rest are dim.
-    private var phases: some View {
-        HStack(spacing: 10) {
-            chip("Ping", on: running && speed.phase == .down && speed.progress < 0.04, done: speed.pingMs != nil)
-            chip("Down", on: speed.phase == .down, done: speed.downMbps != nil)
-            chip("Up", on: speed.phase == .up, done: speed.upMbps != nil)
-        }
-    }
-
-    private func chip(_ t: String, on: Bool, done: Bool) -> some View {
-        Text(t).font(.system(size: 10.5, weight: on ? .semibold : .medium))
-            .foregroundStyle(on ? Pal.ink : (done ? Pal.second : Pal.mute.opacity(0.6)))
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: on)
-    }
-
-    /// One fixed line of text whose content cross-fades between idle note, live phase, result and error.
-    @ViewBuilder private var results: some View {
-        Group {
-            if speed.phase == .failed {
-                Text("Could not reach the test server").foregroundStyle(Pal.warn)
-            } else if running {
-                Text(speed.phase == .down ? "Measuring download…" : "Measuring upload…").foregroundStyle(Pal.mute)
-            } else if finished {
-                Text(String(format: "Down %.0f · Up %.0f Mbps · %.0f ms", speed.downMbps ?? 0, speed.upMbps ?? 0, speed.pingMs ?? 0))
-                    .foregroundStyle(Pal.ink)
-            } else {
-                Text("Uses a little data from Cloudflare, only when you press it.").foregroundStyle(Pal.mute)
-            }
-        }
-        .font(.system(size: 10)).lineLimit(2).minimumScaleFactor(0.85)
-        .frame(maxWidth: .infinity, minHeight: 26, maxHeight: 26, alignment: .topLeading)
-        .id(speed.phase)
-        .transition(.opacity)
+        .animation(.easeOut(duration: 0.2), value: active)
     }
 }
 

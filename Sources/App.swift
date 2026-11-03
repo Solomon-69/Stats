@@ -337,6 +337,10 @@ enum Log {
         case "allsensors": monitor.allSensors = p.count > 1 && p[1] == "1"
         case "opentab": prefs.openTab = p.count > 1 ? p[1] : ""
         case "speedtest": monitor.speed.start()
+        case "speedset":   // speedset:phase:live:down:up:ping:progress
+            let ph: [String: SpeedTest.Phase] = ["idle": .idle, "down": .down, "up": .up, "done": .done, "failed": .failed]
+            func n(_ i: Int) -> Double? { p.count > i ? Double(p[i]) : nil }
+            monitor.speed.testSet(phase: ph[p.count > 1 ? p[1] : "idle"] ?? .idle, live: n(2) ?? 0, down: n(3), up: n(4), ping: n(5), progress: n(6) ?? 0)
         case "state": writeState()
         case "realclick": status.mainItem.button?.performClick(nil)
         case "popopen": popoverRealOpen(scheme: p.count > 1 ? p[1] : "light")
