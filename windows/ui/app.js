@@ -1,6 +1,6 @@
 // app.js. The panel and the Settings window share this file; ?w=panel or ?w=settings picks which one to draw.
 (() => {
-  const VERSION = '1.0.3';
+  const VERSION = '1.0.5';
   const T = window.__TAURI__;
   const invoke = (n, a) => T.core.invoke(n, a);
   const params = new URLSearchParams(location.search);
