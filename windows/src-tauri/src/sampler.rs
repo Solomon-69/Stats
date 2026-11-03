@@ -1,6 +1,7 @@
 // sampler.rs. Reads the PC's numbers. Nothing runs in the background: a snapshot is only taken when the panel asks.
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use sysinfo::{Components, Disks, Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
@@ -74,7 +75,7 @@ pub struct Sampler {
     sys: System,
     disks: Disks,
     nets: Networks,
-    comps: Components,
+    temps: Arc<Mutex<Vec<Temp>>>,
     pid: Pid,
     last_cpu: Instant,
     last_proc: Instant,
@@ -99,7 +100,7 @@ impl Sampler {
             sys,
             disks: Disks::new_with_refreshed_list(),
             nets: Networks::new_with_refreshed_list(),
-            comps: Components::new_with_refreshed_list(),
+            temps: Arc::new(Mutex::new(Vec::new())),
             pid,
             last_cpu: Instant::now(),
             last_proc: old,
@@ -206,14 +207,19 @@ impl Sampler {
         let gap_big = net_secs > 8.0;
         let (net_down_bps, net_up_bps) = if gap_big { (0.0, 0.0) } else { (down as f64 / net_secs, up as f64 / net_secs) };
 
-        if now.duration_since(self.last_comps) > Duration::from_secs(6) || self.cached.temps.is_empty() {
-            self.comps.refresh(true);
+        // Temperatures come from Windows' management service (COM). Ask from a short-lived helper thread so the
+        // main window thread is never touched by COM, and never wait for the answer.
+        if first || now.duration_since(self.last_comps) > Duration::from_secs(10) {
             self.last_comps = now;
-            self.cached.temps = self
-                .comps
-                .iter()
-                .filter_map(|c| c.temperature().filter(|t| t.is_finite() && *t > 1.0 && *t < 130.0).map(|t| Temp { label: c.label().to_string(), c: t }))
-                .collect();
+            let store = self.temps.clone();
+            std::thread::spawn(move || {
+                let comps = Components::new_with_refreshed_list();
+                let v: Vec<Temp> = comps
+                    .iter()
+                    .filter_map(|c| c.temperature().filter(|t| t.is_finite() && *t > 1.0 && *t < 130.0).map(|t| Temp { label: c.label().to_string(), c: t }))
+                    .collect();
+                if let Ok(mut g) = store.lock() { *g = v; }
+            });
         }
 
         if first || now.duration_since(self.last_batt) > Duration::from_secs(4) {
@@ -240,6 +246,7 @@ impl Sampler {
         s.net_name = best.1;
         s.net_total_down = tdown;
         s.net_total_up = tup;
+        s.temps = self.temps.lock().map(|g| g.clone()).unwrap_or_default();
         s.self_cpu = self_cpu;
         s.self_mem = self_mem;
         s
