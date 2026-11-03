@@ -278,7 +278,13 @@ fn start_live_icon(app: AppHandle) {
     });
 }
 
+fn crash_log(msg: &str) {
+    let path = std::env::temp_dir().join("stats-crash.log");
+    let _ = std::fs::write(path, msg);
+}
+
 fn main() {
+    std::panic::set_hook(Box::new(|info| crash_log(&format!("panic: {info}"))));
     let test = std::env::var("STATS_TEST").ok().filter(|s| !s.is_empty());
     let test_for_setup = test.clone();
     tauri::Builder::default()
@@ -379,5 +385,8 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running Stats");
+        .unwrap_or_else(|e| {
+            crash_log(&format!("run error: {e}"));
+            std::process::exit(1);
+        });
 }
