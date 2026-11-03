@@ -232,10 +232,10 @@ struct UpdateRow: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(ink)
-                    Text(subtitle).font(.system(size: 11)).foregroundStyle(mute).fixedSize(horizontal: false, vertical: true)
+                    Text(subtitle).font(.system(size: 11)).foregroundStyle(mute).lineLimit(nil).fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 8)
-                button
+                .frame(maxWidth: .infinity, alignment: .leading)   // the text wraps to the width left over, never "…"
+                button.fixedSize()
             }
             if case .downloading(let p) = updater.state {
                 GeometryReader { g in

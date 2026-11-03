@@ -59,6 +59,26 @@ final class BarView: NSView {
     }
 }
 
+/// One extra live readout: a tiny label over the live number.
+final class ExtraView: NSView {
+    var label = "" { didSet { needsDisplay = true } }
+    var value = "" { didSet { needsDisplay = true } }
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func viewDidChangeEffectiveAppearance() { needsDisplay = true }
+    static func width(_ value: String) -> CGFloat { max(36, CGFloat(value.count) * 7.2 + 12) }
+    override func draw(_ dirtyRect: NSRect) {
+        let ink = NSColor.labelColor
+        func centred(_ t: String, _ font: NSFont, _ color: NSColor, _ y: CGFloat) {
+            let a: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+            let sz = (t as NSString).size(withAttributes: a)
+            (t as NSString).draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: y), withAttributes: a)
+        }
+        centred(label, .systemFont(ofSize: 7.5, weight: .semibold), ink.withAlphaComponent(0.6), 2)
+        centred(value, .monospacedDigitSystemFont(ofSize: 12, weight: .semibold), ink, 9)
+    }
+}
+
 /// Builds and updates the one menu bar icon.
 final class StatusController {
     private(set) var mainItem: NSStatusItem
@@ -66,6 +86,8 @@ final class StatusController {
     private let monitor: Monitor
     private let prefs: Prefs
     var onClick: (NSStatusBarButton) -> Void = { _ in }
+    var onExtraClick: (NSStatusBarButton, ModuleID) -> Void = { _, _ in }
+    private var extraItems: [ModuleID: (item: NSStatusItem, view: ExtraView)] = [:]
 
     init(monitor: Monitor, prefs: Prefs) {
         self.monitor = monitor; self.prefs = prefs
@@ -85,11 +107,37 @@ final class StatusController {
     }
 
     @objc private func clicked(_ s: NSStatusBarButton) { onClick(s) }
+    @objc private func extraClicked(_ s: NSStatusBarButton) {
+        if let m = ModuleID(rawValue: s.identifier?.rawValue ?? "") { onExtraClick(s, m) }
+    }
+
+    /// Adds or removes the extra readouts to match the settings. Each is its own item; none exist by default.
+    private func syncExtras() {
+        let want = prefs.extras
+        for (m, e) in extraItems where !want.contains(m) { NSStatusBar.system.removeStatusItem(e.item); extraItems[m] = nil }
+        for m in want where extraItems[m] == nil {
+            let item = NSStatusBar.system.statusItem(withLength: ExtraView.width("100%"))
+            let view = ExtraView()
+            if let b = item.button {
+                b.wantsLayer = true
+                b.target = self; b.action = #selector(extraClicked(_:))
+                b.sendAction(on: [.leftMouseUp, .rightMouseUp])
+                b.setAccessibilityLabel("Stats \(m.liveLabel)")
+                b.identifier = NSUserInterfaceItemIdentifier(m.rawValue)
+                view.frame = b.bounds; view.autoresizingMask = [.width, .height]
+                b.addSubview(view)
+            }
+            extraItems[m] = (item, view)
+        }
+    }
 
     /// Matches the icon to the settings.
     func sync() {
         mainView.icon = prefs.mainIcon
         mainItem.length = prefs.mainIcon.width
+        // Hidden removes the item from the menu bar completely: no icon and no gap between its neighbours.
+        mainItem.isVisible = prefs.mainIcon != .hidden
+        syncExtras()
         refresh()
     }
 
@@ -99,10 +147,16 @@ final class StatusController {
         s.fraction = monitor.cpu.total; s.value = Fmt.pct(monitor.cpu.total); s.values = monitor.iconSeries(prefs.iconSource)
         mainView.snap = s
         mainView.effortTint = prefs.iconTinted ? NSColor(monitor.status.tint) : nil
+        for (m, e) in extraItems {
+            let t = monitor.barText(m)
+            e.view.label = t.label; e.view.value = t.value
+            let w = ExtraView.width(t.value)
+            if abs(e.item.length - w) > 0.5 { e.item.length = w }
+        }
     }
 
     /// For tests: the menu bar items this app owns (always exactly one) and how wide it is.
     func info() -> [[String: Any]] {
-        [["module": "main", "length": mainItem.length, "invisible": mainView.invisible, "icon": mainView.icon.rawValue]]
+        [["module": "main", "length": mainItem.length, "invisible": mainView.invisible, "visible": mainItem.isVisible, "icon": mainView.icon.rawValue]] + extraItems.map { ["module": $0.key.rawValue, "length": $0.value.item.length, "text": $0.value.view.value, "label": $0.value.view.label] }
     }
 }

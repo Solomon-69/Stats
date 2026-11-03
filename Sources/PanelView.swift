@@ -240,6 +240,31 @@ struct ModuleTile: View {
 
 // MARK: - Details
 
+/// The speed test: a button, live megabits while it runs, then the result. Phone speed testers show the same figures.
+private struct SpeedTestRows: View {
+    @ObservedObject var speed: SpeedTest
+    let bits: Bool
+    let tint: Color
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(speed.running ? "Stop test" : (speed.phase == .idle ? "Test speed" : "Test again")) {
+                speed.running ? speed.cancel() : speed.start()
+            }.buttonStyle(QuietButtonStyle())
+            if speed.running {
+                KV(key: speed.phase == .down ? "Testing download…" : "Testing upload…", value: String(format: "%.0f Mbps", speed.liveMbps), tint: tint)
+            }
+            if let d = speed.downMbps { KV(key: "Test: download", value: String(format: "%.0f Mbps", d), tint: tint) }
+            if let u = speed.upMbps { KV(key: "Test: upload", value: String(format: "%.0f Mbps", u), tint: Pal.second) }
+            if let p = speed.pingMs { KV(key: "Test: delay", value: String(format: "%.0f ms", p)) }
+            if speed.phase == .failed { KV(key: "Test", value: "Could not reach the test server", tint: Pal.warn) }
+            if speed.phase == .idle {
+                Text("Uses a little data from Cloudflare's free test servers, only when you press it.").font(.system(size: 10)).foregroundStyle(Pal.mute)
+            }
+        }
+        .padding(.top, 2)
+    }
+}
+
 private struct KV: View {
     let key: String
     let value: String
@@ -411,12 +436,13 @@ struct ModuleDetail: View {
             LiveChart(monitor: monitor, series: [Series(values: monitor.netDown, tint: module.tint),
                                                  Series(values: monitor.netUp, tint: Pal.second)], max: nil)
                 .frame(height: 44)
-            KV(key: "Download", value: monitor.rate(n.downBps), tint: module.tint)
-            KV(key: "Upload", value: monitor.rate(n.upBps), tint: Pal.second)
+            KV(key: "Download now (this Mac)", value: monitor.rate(n.downBps), tint: module.tint)
+            KV(key: "Upload now (this Mac)", value: monitor.rate(n.upBps), tint: Pal.second)
             KV(key: "Downloaded since Stats opened", value: Fmt.bytes(n.downTotal))
             KV(key: "Uploaded since Stats opened", value: Fmt.bytes(n.upTotal))
             if n.online {
                 KV(key: "Connected with", value: n.kind)
+                if let w = WiFiInfo.linkMbps { KV(key: "Wi-Fi link speed", value: String(format: "%.0f Mbps", w)) }
                 KV(key: "This Mac's address", value: n.address)
                 if monitor.prefs.internetChecks {
                     KV(key: "Public address", value: monitor.netX.publicAddress ?? "Looking…")
@@ -425,6 +451,7 @@ struct ModuleDetail: View {
             } else {
                 KV(key: "Status", value: "Not connected")
             }
+            SpeedTestRows(speed: monitor.speed, bits: monitor.prefs.netBits, tint: module.tint)
         }
     }
 

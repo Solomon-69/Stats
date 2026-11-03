@@ -8,6 +8,22 @@ struct Summary {
 }
 
 extension Monitor {
+    /// The two short lines of a menu bar readout: a tiny label and the live number.
+    func barText(_ m: ModuleID) -> (label: String, value: String) {
+        switch m {
+        case .cpu: return ("CPU", Fmt.pct(cpu.total))
+        case .gpu: return ("GPU", Fmt.pct(gpu ?? 0))
+        case .memory: return ("RAM", Fmt.pct(mem.fraction))
+        case .disk: return ("DISK", Fmt.pct(disk.free > 0 ? min(disk.usedFraction, 0.99) : disk.usedFraction))
+        case .diskio: return ("R/W", Fmt.bytes(disk.readBps + disk.writeBps) + "/s")
+        case .network:
+            let d = prefs.netBits ? String(format: "%.1f", net.downBps * 8 / 1e6) : Fmt.bytes(net.downBps)
+            return ("NET", prefs.netBits ? d + " Mb" : d + "/s")
+        case .battery: return ("BATT", battery.map { Fmt.pct($0.percent / 100) } ?? "--")
+        default: return (m.liveLabel.uppercased(), "")
+        }
+    }
+
     func summary(_ m: ModuleID) -> Summary {
         switch m {
         case .cpu:

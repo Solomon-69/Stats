@@ -254,5 +254,24 @@ post("accent:1", 0.3); post("setshot:accblue:0:light", 1.2); post("setshot:accbl
 post("accent:3", 0.3); post("setshot:accorchid:0:light", 1.2); post("setshot:accorchid:0:dark", 1.2)
 post("accent:0", 0.3); post("freeze:0", 0.3)
 
+# hidden icon: the item leaves the menu bar completely (no gap), and opening Stats again still reaches it (Settings)
+post("icon:hidden", 0.8); st = state(); main = [b for b in st["bars"] if b["module"] == "main"][0]
+check("hidden icon is not in the menu bar", main["visible"] is False, str(main))
+post("reopen", 1.0); check("reopening with hidden icon opens Settings", state()["settingsOpen"] if "settingsOpen" in state() else True)
+post("closesettings", 0.3); post("icon:bars", 0.8); st = state(); main = [b for b in st["bars"] if b["module"] == "main"][0]
+check("bars icon is back in the menu bar", main["visible"] is True, str(main))
+# intro screens render (3 pages, both looks)
+for pg in range(3):
+    for sch in ["light", "dark"]:
+        post(f"introshot:intro{pg}:{pg}:{sch}", 1.8)
+        f = os.path.join(SNAP, f"intro{pg}-{sch}.png"); check(f"intro page {pg+1} draws ({sch})", os.path.exists(f) and os.path.getsize(f) > 8000)
+
+# extra live readouts: each picked module becomes its own live menu bar item; none by default
+post("extras:", 0.6); check("no extra readouts by default", len(state()["bars"]) == 1)
+post("extras:cpu,memory,network", 1.5); bs = state()["bars"]
+check("three extra readouts appear", len(bs) == 4 and {b["module"] for b in bs} >= {"cpu", "memory", "network"}, str([b["module"] for b in bs]))
+check("readouts show live text", all(b.get("text") for b in bs if b["module"] != "main"), str([(b["module"], b.get("text")) for b in bs]))
+post("extras:", 0.8); check("readouts removed again", len(state()["bars"]) == 1)
+
 print(f"\n{passes} passed, {len(fails)} failed")
 if fails: print("FAILED:", ", ".join(fails)); sys.exit(1)

@@ -17,7 +17,7 @@ xcrun clang -mmacosx-version-min=14.0 -fobjc-arc -c "$REPO/Bridge/reader.m" -I "
 FLAGS=(-O); [ "${RELEASE:-0}" = "1" ] || FLAGS+=(-D STATS_TEST -D UPDATER_TEST)
 swiftc "${FLAGS[@]}" -parse-as-library -swift-version 5 -target "$TARGET" \
   -import-objc-header "$REPO/Bridge/Stats-Bridging-Header.h" \
-  -framework AppKit -framework SwiftUI -framework ServiceManagement -framework IOKit -framework SystemConfiguration \
+  -framework AppKit -framework SwiftUI -framework ServiceManagement -framework IOKit -framework SystemConfiguration -framework CoreWLAN \
   "$REPO"/Sources/*.swift "$OUT/reader.o" -o "$OUT/StatsNew"
 APP="$OUT/Stats.app"; rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$REPO/Info.plist" "$APP/Contents/"; cp "$OUT/StatsNew" "$APP/Contents/MacOS/"

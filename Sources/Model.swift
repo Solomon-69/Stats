@@ -89,6 +89,8 @@ extension ModuleID {
         default: return true
         }
     }
+    /// What can be pinned to the menu bar as its own live readout (all of these are read while the panel is closed).
+    static let extraChoices: [ModuleID] = [.cpu, .gpu, .memory, .disk, .diskio, .network, .battery]
     static let liveChoices: [ModuleID] = [.cpu, .gpu, .memory, .diskio, .network, .sensors]
     var liveLabel: String {
         switch self {
@@ -147,6 +149,8 @@ final class Prefs: ObservableObject {
         get { mainIcon == .hidden }
         set { mainIcon = newValue ? .hidden : .bars }
     }
+    /// Extra live readouts, each its own small item in the menu bar (empty by default).
+    @Published var extras: [ModuleID] { didSet { d.set(extras.map(\.rawValue), forKey: "extras") } }
     @Published var zones: [String] { didSet { d.set(zones, forKey: "zones") } }
     /// Opt-in: look up the public address and delay to the internet (asks the internet, so it is off until chosen).
     @Published var internetChecks: Bool { didSet { d.set(internetChecks, forKey: "internetChecks") } }
@@ -161,7 +165,9 @@ final class Prefs: ObservableObject {
         d.removeObject(forKey: "barStyles")
         refresh = d.object(forKey: "refresh") as? Int ?? 2
         fahrenheit = d.bool(forKey: "fahrenheit")
-        netBits = d.bool(forKey: "netBits")
+        // Internet speeds are quoted in megabits a second everywhere (phone testers, providers), so that is the default.
+        netBits = d.object(forKey: "netBits") as? Bool ?? true
+        extras = (d.stringArray(forKey: "extras") ?? []).compactMap(ModuleID.init(rawValue:)).filter { ModuleID.extraChoices.contains($0) && $0.availableHere }
         appearance = d.integer(forKey: "appearance")
         mainIcon = d.string(forKey: "mainIcon").flatMap(MainIcon.init(rawValue:)) ?? (d.bool(forKey: "invisibleIcon") ? .hidden : .bars)
         iconTinted = d.bool(forKey: "iconTinted")
@@ -186,6 +192,8 @@ final class Prefs: ObservableObject {
 
 /// The live numbers. Samples on a timer; the panel redraws only while it is open.
 final class Monitor: ObservableObject {
+    /// On-demand internet speed test (the network tile's Test speed button).
+    let speed = SpeedTest()
     let prefs: Prefs
     var onTick: () -> Void = {}
 
@@ -268,6 +276,7 @@ final class Monitor: ObservableObject {
 
     private func needs(_ m: ModuleID) -> Bool {
         if prefs.mainIcon == .live && m == prefs.iconSource { return true }
+        if prefs.extras.contains(m) || (m == .disk && prefs.extras.contains(.diskio)) { return true }
         if visible { return prefs.shown.contains(m) }
         // Cheap readings keep running while the panel is closed, so its graphs open already full of recent history.
         if prefs.shown.contains(m), [.cpu, .memory, .gpu, .disk, .diskio, .network, .battery].contains(m) { return true }

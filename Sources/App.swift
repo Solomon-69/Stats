@@ -44,6 +44,7 @@ enum Log {
     private var status: StatusController!
     private let popover = NSPopover()
     private var settingsWindow: NSWindow?
+    private var introWindow: NSWindow?
     private lazy var nav = SettingsNav(prefs: prefs)
     private var settingsKeys: Any?
     private var quietOpen = false
@@ -62,6 +63,7 @@ enum Log {
         monitor.start()
         status = StatusController(monitor: monitor, prefs: prefs)
         status.onClick = { [weak self] button in self?.statusClicked(button, nil) }
+        status.onExtraClick = { [weak self] button, module in self?.statusClicked(button, module) }
         monitor.onTick = { [weak self] in self?.status.refresh() }
 
         popover.delegate = self
@@ -80,11 +82,20 @@ enum Log {
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(testCommand(_:)), name: testNotification, object: nil)
         #endif
         Log.write("launched")
+        #if !STATS_TEST
+        // First run only; people who already use Stats (they have saved settings) are not interrupted by an update.
+        if !UserDefaults.standard.bool(forKey: IntroPref.done) {
+            if UserDefaults.standard.object(forKey: "mainIcon") != nil { UserDefaults.standard.set(true, forKey: IntroPref.done) } else { showIntro() }
+        }
+        #endif
     }
 
     /// Opening Stats again from Finder or Spotlight shows the panel.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !popover.isShown, let b = status.mainItem.button { openPopover(from: b, module: nil) }
+        // With the icon hidden there is nothing to click, so opening Stats again opens Settings instead.
+        if introWindow != nil { introWindow?.makeKeyAndOrderFront(nil); return false }
+        if prefs.mainIcon == .hidden { openSettings() }
+        else if !popover.isShown, let b = status.mainItem.button { openPopover(from: b, module: nil) }
         return false
     }
 
@@ -203,6 +214,37 @@ enum Log {
         layer.add(a, forKey: "bounce")
     }
 
+    // MARK: Welcome (shown once after install)
+
+    private func showIntro(page: Int = 0) {
+        introWindow?.close()
+        let w = NSWindow(contentRect: .zero, styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+        w.titlebarAppearsTransparent = true
+        w.titleVisibility = .hidden
+        w.isMovableByWindowBackground = true
+        w.isReleasedWhenClosed = false
+        w.title = "Welcome to Stats"
+        let view = IntroView(prefs: prefs, page: page, finish: { [weak self] openPanel in
+            UserDefaults.standard.set(true, forKey: IntroPref.done)
+            self?.introWindow?.close()
+            self?.introWindow = nil
+            guard openPanel else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                guard let self else { return }
+                if self.prefs.mainIcon == .hidden { self.openSettings() }
+                else if let b = self.status.mainItem.button { self.openPopover(from: b, module: nil) }
+            }
+        })
+        w.contentView = NSHostingView(rootView: view)
+        w.setContentSize(w.contentView!.fittingSize)
+        w.center()
+        introWindow = w
+        // A deliberate first-run window, so it comes to the front.
+        NSApp.activate(ignoringOtherApps: true)
+        w.makeKeyAndOrderFront(nil)
+        w.orderFrontRegardless()
+    }
+
     // MARK: Settings window, quit, login
 
     private func openSettings() {
@@ -274,6 +316,7 @@ enum Log {
         case "theme": if p.count > 1 { prefs.themeIndex = Int(p[1]) ?? 0 }
         case "checks": if p.count > 1 { prefs.internetChecks = p[1] == "1" }
         case "tiles": if p.count > 1 { prefs.colourfulTiles = p[1] == "1" }
+        case "extras": prefs.extras = p.count > 1 ? p[1].split(separator: ",").compactMap { ModuleID(rawValue: String($0)) } : []
         case "invisible": if p.count > 1 { prefs.invisibleIcon = p[1] == "1" }
         case "freeze": monitor.frozen = p.count > 1 && p[1] == "1"
         case "icon": if p.count > 1, let i = MainIcon(rawValue: p[1]) { prefs.mainIcon = i }
@@ -288,11 +331,16 @@ enum Log {
             if p.count > 1, p[1] == "reset" { nav.current = nil; nav.tab = .look }
             else if p.count > 1, p[1] == "tab", p.count > 2, let n = Int(p[2]), let t = SettingsTab(rawValue: n) { nav.tab = t }
             else if p.count > 1, let k = keys[p[1]] { nav.key(k) }
+        case "speedtest": monitor.speed.start()
         case "state": writeState()
         case "realclick": status.mainItem.button?.performClick(nil)
         case "popopen": popoverRealOpen(scheme: p.count > 1 ? p[1] : "light")
         case "popjoin": popoverJoinSnapshot(name: p.count > 1 ? p[1] : "join", scheme: p.count > 2 ? p[2] : "light")
         case "setshot": settingsShot(name: p.count > 1 ? p[1] : "setshot", tab: p.count > 2 ? Int(p[2]) ?? 0 : 0, scheme: p.count > 3 ? p[3] : "light")
+        case "introshot": introShot(name: p.count > 1 ? p[1] : "intro", page: p.count > 2 ? Int(p[2]) ?? 0 : 0, scheme: p.count > 3 ? p[3] : "light")
+        case "introreset": UserDefaults.standard.removeObject(forKey: IntroPref.done)
+        case "introdone": UserDefaults.standard.bool(forKey: IntroPref.done) ? Log.write("intro done") : Log.write("intro not done")
+        case "reopen": _ = applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)
         case "snap": snapshot(name: p.count > 1 ? p[1] : "snap", scheme: p.count > 2 ? p[2] : "light")
         case "quit": quit()
         default: break
@@ -319,7 +367,8 @@ enum Log {
         if let g = m.gpu { d["gpu"] = g }
         d["bars"] = status.info()
         d["summary"] = Dictionary(uniqueKeysWithValues: ModuleID.allCases.map { ($0.rawValue, ["value": m.summary($0).value, "subtitle": m.summary($0).subtitle]) })
-        d["prefs"] = ["refresh": prefs.refresh, "fahrenheit": prefs.fahrenheit, "netBits": prefs.netBits, "appearance": prefs.appearance, "invisible": prefs.invisibleIcon, "icon": prefs.mainIcon.rawValue, "iconSource": prefs.iconSource.rawValue, "iconTinted": prefs.iconTinted, "accent": prefs.settingsAccent, "theme": prefs.themeIndex, "tiles": prefs.colourfulTiles, "checks": prefs.internetChecks, "alerts": prefs.alerts, "zones": prefs.zones]
+        d["speed"] = ["phase": "\(monitor.speed.phase)", "down": monitor.speed.downMbps ?? -1, "up": monitor.speed.upMbps ?? -1, "ping": monitor.speed.pingMs ?? -1, "wifi": WiFiInfo.linkMbps ?? -1]
+        d["prefs"] = ["refresh": prefs.refresh, "fahrenheit": prefs.fahrenheit, "netBits": prefs.netBits, "appearance": prefs.appearance, "invisible": prefs.invisibleIcon, "icon": prefs.mainIcon.rawValue, "extras": prefs.extras.map(\.rawValue), "iconSource": prefs.iconSource.rawValue, "iconTinted": prefs.iconTinted, "accent": prefs.settingsAccent, "theme": prefs.themeIndex, "tiles": prefs.colourfulTiles, "checks": prefs.internetChecks, "alerts": prefs.alerts, "zones": prefs.zones]
         if let b = m.battery { d["battery"] = ["percent": b.percent, "charging": b.charging, "plugged": b.pluggedIn, "cycles": b.cycles,
                                                 "health": b.health ?? -1, "secondsLeft": b.secondsLeft ?? -1] }
         if let w = popover.contentViewController?.view.window { d["panelFrame"] = NSStringFromRect(w.frame); d["panelWindow"] = w.windowNumber }
@@ -373,6 +422,28 @@ enum Log {
     }
 
     /// The real Settings view in a window that is never shown, drawn to a PNG (so NSView parts like the icon pictures appear).
+    /// Draws one intro page into a PNG without showing a window.
+    private func introShot(name: String, page: Int, scheme: String) {
+        let view = IntroView(prefs: prefs, page: page, finish: { _ in })
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(origin: .zero, size: host.fittingSize)
+        let win = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        win.isReleasedWhenClosed = false
+        win.appearance = NSAppearance(named: scheme == "dark" ? .darkAqua : .aqua)
+        win.contentView = host
+        host.layoutSubtreeIfNeeded()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            host.layoutSubtreeIfNeeded()
+            let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/StatsRemake-snap")
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                host.cacheDisplay(in: host.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("\(name)-\(scheme).png"))
+            }
+            win.contentView = nil; win.close()
+        }
+    }
+
     private func settingsShot(name: String, tab: Int, scheme: String) {
         nav.tab = SettingsTab(rawValue: tab) ?? .look
         var view = SettingsView(prefs: prefs, monitor: monitor, nav: nav) { _ in }

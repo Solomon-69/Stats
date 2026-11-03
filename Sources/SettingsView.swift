@@ -145,6 +145,27 @@ struct SettingsView: View {
         .padding(12)
         .tileStyle(t, radius: 14)
         .modifier(pill("icontint"))
+        pickerCard(symbol: "gauge.with.dots.needle.67percent", title: "Live readouts in the menu bar",
+                   subtitle: "Pick any to show as their own small live number next to the Stats icon. Click one to open its details.", tint: t) {
+            HStack(spacing: 6) {
+                ForEach(ModuleID.extraChoices.filter(\.availableHere)) { m in
+                    let on = prefs.extras.contains(m)
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            if on { prefs.extras.removeAll { $0 == m } } else { prefs.extras.append(m) }
+                        }
+                    } label: {
+                        Text(m.liveLabel == m.title ? m.title : m.liveLabel).font(.system(size: 11.5, weight: .medium)).lineLimit(1)
+                            .foregroundStyle(on ? Pal.panel : Pal.ink)
+                            .padding(.horizontal, 10).frame(height: 28)
+                            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(on ? Pal.ink : Pal.box))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(m.title) in the menu bar")
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }
+        }
     }
 
     /// Every look the main menu bar icon can take, drawn by the real menu bar code so the picture is what you get.
@@ -206,7 +227,7 @@ struct SettingsView: View {
             ChipRow(options: [false, true], selected: prefs.fahrenheit, label: { $0 ? "°F" : "°C" }, tint: t) { prefs.fahrenheit = $0 }
         }
         .modifier(pill("unit.temp"))
-        SettingRow(symbol: "arrow.up.arrow.down", title: "Internet speed", subtitle: "Megabytes a second, or megabits a second", tint: t) {
+        SettingRow(symbol: "arrow.up.arrow.down", title: "Internet speed", subtitle: "Megabits a second (like speed testers), or megabytes", tint: t) {
             ChipRow(options: [false, true], selected: prefs.netBits, label: { $0 ? "Mbps" : "MB/s" }, tint: t) { prefs.netBits = $0 }
         }
         .modifier(pill("unit.speed"))
