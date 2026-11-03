@@ -34,6 +34,15 @@ jobs:
           if ($setup) { Copy-Item $setup.FullName dist/Stats-Setup.exe }
           Get-ChildItem dist -File | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } | Set-Content dist/SHA256SUMS-windows.txt
           Get-Content dist/SHA256SUMS-windows.txt
+      - name: Make sure the web view part is there
+        run: |
+          $k = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          if (Test-Path $k) { "WebView2 present: " + (Get-ItemProperty $k).pv }
+          else {
+            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile wv2.exe
+            Start-Process -FilePath .\wv2.exe -ArgumentList '/silent','/install' -Wait
+            "WebView2 installed: " + (Get-ItemProperty $k -ErrorAction SilentlyContinue).pv
+          }
       - name: Screenshots of the real window
         run: |
           $exe = (Resolve-Path dist/Stats/Stats.exe).Path

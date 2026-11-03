@@ -31,7 +31,9 @@ if ($ok) {
   $crop.Save((Join-Path (Resolve-Path $Out) "$Name.png"), [Drawing.Imaging.ImageFormat]::Png)
 }
 $bmp.Save($full, [Drawing.Imaging.ImageFormat]::Png)
-taskkill /T /F /PID $p.Id | Out-Null
+if (-not $ok) { Get-Process | Where-Object { $_.ProcessName -match "Stats|msedgewebview2" } | Format-Table Id,ProcessName,MainWindowTitle | Out-String | Write-Host; Get-WinEvent -FilterHashtable @{LogName="Application";Level=2;StartTime=(Get-Date).AddMinutes(-3)} -MaxEvents 5 -ErrorAction SilentlyContinue | ForEach-Object { $_.Message.Substring(0,[Math]::Min(300,$_.Message.Length)) } | Write-Host }
+taskkill /T /F /PID $p.Id 2>$null | Out-Null
 Start-Sleep -Seconds 1
-if (-not $ok) { Write-Host "::error::no report for $Name"; exit 1 }
+if (-not $ok) { Write-Host "::error::no report for $Name (exited=$($p.HasExited))"; if ($p.HasExited) { Write-Host "exit code $($p.ExitCode)" } }
+if (-not $ok) { exit 1 }
 Write-Host "shot $Name ok"
