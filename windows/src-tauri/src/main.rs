@@ -222,11 +222,33 @@ fn toggle_panel(app: &AppHandle, rect: Option<tauri::Rect>) {
     let _ = app.emit("panel-visible", true);
 }
 
+/// The Settings window only exists while it is open, which keeps the app's memory use down.
+fn build_settings(app: &AppHandle, visible: bool) -> tauri::Result<()> {
+    WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?w=settings".into()))
+        .title("Stats Settings")
+        .inner_size(720.0, 580.0)
+        .resizable(false)
+        .maximizable(false)
+        .center()
+        .visible(visible)
+        .additional_browser_args(&browser_args())
+        .build()
+        .map(|_| ())
+}
+
 fn show_settings(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("settings") {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+    } else {
+        let h = app.clone();
+        // Windows must be created off the event handler that asked for them.
+        std::thread::spawn(move || {
+            if build_settings(&h, true).is_ok() {
+                if let Some(w) = h.get_webview_window("settings") { let _ = w.set_focus(); }
+            }
+        });
     }
 }
 
@@ -344,23 +366,8 @@ fn main() {
                 });
             }
 
-            let settings = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?w=settings".into()))
-                .title("Stats Settings")
-                .inner_size(720.0, 580.0)
-                .resizable(false)
-                .maximizable(false)
-                .center()
-                .visible(false)
-                .additional_browser_args(&browser_args())
-                .build()?;
-            {
-                let s2 = settings.clone();
-                settings.on_window_event(move |e| {
-                    if let WindowEvent::CloseRequested { api, .. } = e {
-                        api.prevent_close();
-                        let _ = s2.hide();
-                    }
-                });
+            if testing {
+                build_settings(&handle, false)?;
             }
 
             let open = MenuItem::with_id(app, "open", "Open Stats", true, None::<&str>)?;

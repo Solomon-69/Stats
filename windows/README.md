@@ -7,3 +7,5 @@ Run Stats.exe. No install needed. Windows may show a blue "protected your PC" sc
 click "More info", then "Run anyway".
 
 Based on exelban/stats (MIT licence). https://github.com/Solomon-69/Stats
+
+Build and test: see .github/workflows/windows.yml (Tauri 2, built and click-tested on a Windows runner).

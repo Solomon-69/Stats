@@ -1,6 +1,6 @@
 [package]
 name = "stats-windows"
-version = "1.0.3"
+version = "1.0.5"
 description = "Stats: how your PC is doing, in plain words"
 edition = "2021"
 license = "MIT"
