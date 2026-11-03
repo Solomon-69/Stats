@@ -146,6 +146,9 @@ fn open_url(app: AppHandle, url: String) {
 #[tauri::command]
 fn set_icon_style(app: AppHandle, state: State<'_, AppState>, style: String) {
     state.live_gen.fetch_add(1, Ordering::SeqCst);
+    if let Some(t) = app.tray_by_id("main") {
+        let _ = t.set_visible(style != "hidden");
+    }
     if style == "live" {
         start_live_icon(app);
     } else {

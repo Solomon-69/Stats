@@ -114,3 +114,5 @@ a{color:var(--brand);cursor:pointer}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 :root[data-theme=dark] .sw.on::after{background:#0F0F10}
+.btn.mini{padding:5px 11px;font-size:12px;border-radius:8px;flex:none}
+.btn:disabled{opacity:.5}

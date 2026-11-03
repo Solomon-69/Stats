@@ -50,6 +50,13 @@ for (const id of tiles) {
 await panel.click(`.tile[data-id=${tiles[tiles.length - 1]}] .trow`); await sleep(300);
 check('collapse', (await panel.$$eval('.tile.open', (t) => t.length)) === 0);
 
+await panel.click('.tile[data-id=network] .trow'); await sleep(400);
+await panel.click('.tile[data-id=network] [data-speed]');
+let st = '';
+for (let i = 0; i < 40; i++) { await sleep(1000); st = await panel.$eval('.tile[data-id=network] .detail .drow:last-child span', (e) => e.textContent).catch(() => ''); if (/Download|Could not/.test(st)) break; }
+check('speed test answers', /Download \d|Could not/.test(st), st);
+await panel.click('.tile[data-id=network] .trow'); await sleep(300);
+
 // ---- settings: every tab, switch and chip ----
 const nav = async (i) => { await settings.click(`.nav[data-tab="${i}"]`); await sleep(450); return settings.$eval('.main h2', (e) => e.textContent); };
 check('tab Look', (await nav(0)) === 'Look'); await settings.screenshot({ path: `${out}/settings-look.png` });
@@ -67,7 +74,9 @@ const brand = await settings.evaluate(() => document.documentElement.style.getPr
 check('accent changes', brand.length > 3, brand); await settings.click('.swatch[data-acc="0"]');
 await settings.click('[data-seg=icon] button[data-v=live]'); await sleep(1200);
 check('tray icon style live saved', (await settings.evaluate(() => JSON.parse(localStorage.getItem('stats.prefs')).icon)) === 'live');
-await settings.click('[data-seg=icon] button[data-v=bars]'); await sleep(300);
+await settings.click('[data-seg=icon] button[data-v=hidden]'); await sleep(600);
+check('tray icon hidden saved', (await settings.evaluate(() => JSON.parse(localStorage.getItem('stats.prefs')).icon)) === 'hidden');
+await settings.click('[data-seg=icon] button[data-v=bars]'); await sleep(600);
 
 check('tab What to watch', (await nav(1)) === 'What to watch'); await settings.screenshot({ path: `${out}/settings-watch.png` });
 const modRows = await settings.$$eval('[data-sw^="mod."]', (s) => s.map((x) => x.dataset.sw));

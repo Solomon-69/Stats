@@ -142,7 +142,7 @@
         const r = rate(s.net_down_bps);
         return { mid: big(r[0], r[1]), spark: spark([{ v: H.down, color: TINT.network }, { v: H.up, color: 'var(--second)' }]), sub: 'Upload ' + rateText(s.net_up_bps) };
       },
-      detail: (s) => dh('Right now') + drow('Connection', s.net_name || 'None') + drow('Downloading', rateText(s.net_down_bps)) + drow('Uploading', rateText(s.net_up_bps)) + dh('Since the PC started') + drow('Downloaded', bytes(s.net_total_down)) + drow('Uploaded', bytes(s.net_total_up)) },
+      detail: (s) => dh('Right now') + drow('Connection', s.net_name || 'None') + drow('Downloading', rateText(s.net_down_bps)) + drow('Uploading', rateText(s.net_up_bps)) + dh('Since the PC started') + drow('Downloaded', bytes(s.net_total_down)) + drow('Uploaded', bytes(s.net_total_up)) + dh('Speed test') + `<div class="drow"><span>${esc(speedText)}</span><button class="btn mini" data-speed ${speedBusy ? 'disabled' : ''}>Test speed</button></div>` },
     { id: 'battery', title: 'Battery', avail: (s) => !!s.battery,
       body(s) { const b = s.battery; return { mid: big(Math.round(b.percent) + '%'), sub: battLine(b), bar: segs(b.percent / 100, b.percent < 15 && !b.plugged_in ? 'var(--bad)' : TINT.battery) }; },
       detail: (s) => { const b = s.battery; return dh('Battery') + drow('Charge', Math.round(b.percent) + '%') + drow('Health', b.health ? Math.round(b.health) + '%' : 'Not reported') + drow('Power', b.watts ? b.watts.toFixed(1) + ' W' : 'Not reported') + drow('Power cable', b.plugged_in ? 'Plugged in' : 'Not plugged in'); } },
@@ -152,6 +152,30 @@
   ];
   const mainTemp = (s) => { const cpu = s.temps.find((t) => /cpu|core|package/i.test(t.label)); return (cpu || s.temps.slice().sort((a, b) => b.c - a.c)[0]).c; };
   const enabled = (id) => P.mods[id] !== false;
+  let speedText = 'Not tested yet', speedBusy = false;
+  async function speedTest() {
+    if (speedBusy) return; speedBusy = true; speedText = 'Testing…'; render();
+    try {
+      const ctl = new AbortController(); let got = 0; const t0 = performance.now();
+      const stop = setTimeout(() => ctl.abort(), 9000);
+      await Promise.all([0, 1, 2, 3].map(async () => {
+        try {
+          const r = await fetch('https://speed.cloudflare.com/__down?bytes=25000000', { cache: 'no-store', signal: ctl.signal });
+          const rd = r.body.getReader();
+          for (;;) { const { done, value } = await rd.read(); if (done) break; got += value.length; }
+        } catch {}
+      }));
+      clearTimeout(stop);
+      const down = got * 8 / ((performance.now() - t0) / 1000) / 1e6;
+      speedText = `Testing upload…`; render();
+      const t1 = performance.now(); let sent = 0; const ctl2 = new AbortController(); const stop2 = setTimeout(() => ctl2.abort(), 7000);
+      await Promise.all([0, 1, 2, 3].map(async () => { try { await fetch('https://speed.cloudflare.com/__up', { method: 'POST', body: new Uint8Array(3e6), signal: ctl2.signal }); sent += 3e6; } catch {} }));
+      clearTimeout(stop2);
+      const up = sent * 8 / ((performance.now() - t1) / 1000) / 1e6;
+      speedText = got > 0 ? `Download ${down.toFixed(down < 10 ? 1 : 0)} Mbps · Upload ${sent > 0 ? up.toFixed(up < 10 ? 1 : 0) + ' Mbps' : 'not measured'}` : 'Could not reach the speed test. Are you online?';
+    } catch { speedText = 'Could not run the speed test.'; }
+    speedBusy = false; render();
+  }
 
   // ---------- panel ----------
   let S = null, machine = null, timer = null, shell, grid, steady = { text: 'Everything looks calm', tint: 'var(--good)', at: 0 };
@@ -204,7 +228,7 @@
       if (!e) {
         const el = document.createElement('div'); el.className = 'tile'; el.dataset.id = t.id; el.style.setProperty('--tint', TINT[t.id]);
         el.innerHTML = `<div class="trow"><div class="ico">${ICON[t.id]}</div><div class="ttl">${t.title}</div><div class="chev">${ICON.chev}</div></div><div class="dyn"></div>`;
-        el.onclick = () => toggle(t.id);
+        el.onclick = (ev) => { if (ev.target.closest('[data-speed]')) { speedTest(); return; } toggle(t.id); };
         e = els[t.id] = { el, dyn: el.querySelector('.dyn') };
       }
       if (grid.children[idx] !== e.el) grid.insertBefore(e.el, grid.children[idx] || null);
@@ -247,6 +271,7 @@
     buildPanel();
     T.event.listen('panel-visible', (e) => { if (e.payload) { animateIn(); startLoop(); } else stopLoop(); });
     T.event.listen('prefs-changed', () => { P = load(); applyTheme(); if (timer) startLoop(); else render(); });
+    invoke('set_icon_style', { style: P.icon }).catch(() => {});
     if (window.__MOCK || (testView && testView.startsWith('panel'))) { startLoop(); }
     if (testOpt.expand) setTimeout(() => toggle(testOpt.expand), 900);
   }
@@ -263,7 +288,7 @@
   function pageHtml() {
     if (tab === 0) return row('Appearance', 'Follows Windows unless you pick one', segHtml('appearance', [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']], P.appearance))
       + row('Accent colour', 'Used in this window', `<div class="swatches">${ACC.map((a, i) => `<button class="swatch ${i === P.accent ? 'on' : ''}" data-acc="${i}" title="${a[0]}" style="--c:${a[1]}"></button>`).join('')}</div>`)
-      + row('Tray icon', 'Live bars move with your PC every 5 seconds', segHtml('icon', [['bars', 'Bars'], ['live', 'Live bars']], P.icon));
+      + row('Tray icon', 'Live bars move every 5 seconds. Hidden removes the tray icon: open Stats again to reach Settings', segHtml('icon', [['bars', 'Bars'], ['live', 'Live bars'], ['hidden', 'Hidden']], P.icon));
     if (tab === 1) {
       const have = (id) => id === 'battery' ? !!availSnap?.battery : id === 'sensors' ? !!availSnap?.temps?.length : true;
       return MODS.filter((m) => have(m[0])).map((m) => row(`<span class="modrow"><span class="ico" style="--tint:${TINT[m[0]]};width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--tint);background:color-mix(in srgb,var(--tint) 14%,transparent);border:1px solid color-mix(in srgb,var(--tint) 40%,transparent)"><span style="width:16px;height:16px;display:block">${ICON[m[0]]}</span></span>${m[1]}</span>`, m[2], swHtml('mod.' + m[0], enabled(m[0])))).join('');
