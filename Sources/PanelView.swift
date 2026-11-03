@@ -20,7 +20,9 @@ struct PanelView: View {
     /// With every sensor listed the panel grows to the screen (minus room for the header, footer and menu bar).
     private var listLimit: CGFloat { monitor.allSensors ? max(Self.maxListHeight, (NSScreen.main?.visibleFrame.height ?? 800) - 190) : Self.maxListHeight }
 
-    var body: some View {
+    var body: some View { content.noFocusRing() }
+
+    @ViewBuilder private var content: some View {
         let modules = monitor.panelModules
         VStack(spacing: 10) {
             header

@@ -32,7 +32,9 @@ struct SettingsView: View {
     private var tab: SettingsTab { nav.tab }
     private func pill(_ id: String, inset: CGFloat = 0) -> NavPill { NavPill(nav: nav, id: id, ns: pillNS, inset: inset) }
 
-    var body: some View {
+    var body: some View { content.noFocusRing() }
+
+    @ViewBuilder private var content: some View {
         HStack(spacing: 0) {
             sidebar
             Rectangle().fill(Pal.line).frame(width: 1)

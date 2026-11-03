@@ -41,7 +41,9 @@ struct IntroView: View {
         _seen = State(initialValue: [page])
     }
 
-    var body: some View {
+    var body: some View { content.noFocusRing() }
+
+    @ViewBuilder private var content: some View {
         VStack(spacing: 0) {
             ZStack {
                 switch page {
