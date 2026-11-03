@@ -273,5 +273,13 @@ check("three extra readouts appear", len(bs) == 4 and {b["module"] for b in bs} 
 check("readouts show live text", all(b.get("text") for b in bs if b["module"] != "main"), str([(b["module"], b.get("text")) for b in bs]))
 post("extras:", 0.8); check("readouts removed again", len(state()["bars"]) == 1)
 
+# Show in Dock: off by default, live on/off flips the activation policy, no focus taken
+st0 = state(); st0g = lambda k: st0.get(k)
+check("dock off by default", st0g("showInDock") is False or st0g("showInDock") == 0, str(st0g("showInDock")))
+post("dock:1", 0.8); st1 = state()
+check("dock on -> regular policy", st1.get("activationPolicy") == "regular", str(st1.get("activationPolicy")))
+post("dock:0", 0.8); st2 = state()
+check("dock off -> accessory policy", st2.get("activationPolicy") == "accessory", str(st2.get("activationPolicy")))
+
 print(f"\n{passes} passed, {len(fails)} failed")
 if fails: print("FAILED:", ", ".join(fails)); sys.exit(1)

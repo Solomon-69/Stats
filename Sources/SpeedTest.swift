@@ -21,6 +21,8 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
     @Published private(set) var upMbps: Double?
     @Published private(set) var liveMbps = 0.0
     @Published private(set) var pingMs: Double?
+    /// 0...1 through the current phase (ping counts as the start of the download phase).
+    @Published private(set) var progress = 0.0
 
     private let lock = NSLock()
     private var bytes = 0                 // bytes moved in the current phase
@@ -35,7 +37,7 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
         guard !running else { return }
         runID += 1
         let id = runID
-        downMbps = nil; upMbps = nil; pingMs = nil; liveMbps = 0
+        downMbps = nil; upMbps = nil; pingMs = nil; liveMbps = 0; progress = 0
         phase = .down
         let cfg = URLSessionConfiguration.ephemeral
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -47,11 +49,11 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
             await self.ping(id)
             let down = await self.measure(id, phase: .down)
             guard id == self.runID else { return }
-            await MainActor.run { self.downMbps = down; self.phase = .up; self.liveMbps = 0 }
+            await MainActor.run { self.downMbps = down; self.phase = .up; self.liveMbps = 0; self.progress = 0 }
             let up = await self.measure(id, phase: .up)
             guard id == self.runID else { return }
             await MainActor.run {
-                self.upMbps = up; self.liveMbps = 0
+                self.upMbps = up; self.liveMbps = 0; self.progress = 1
                 self.phase = (down == nil && up == nil) ? .failed : .done
             }
             self.session?.invalidateAndCancel(); self.session = nil
@@ -61,7 +63,7 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
     func cancel() {
         runID += 1
         session?.invalidateAndCancel(); session = nil
-        phase = .idle; liveMbps = 0
+        phase = .idle; liveMbps = 0; progress = 0
     }
 
     private func ping(_ id: Int) async {
@@ -102,7 +104,7 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
             lock.lock(); let b = bytes; lock.unlock()
             let now = Date()
             let dt = now.timeIntervalSince(last.t)
-            if dt > 0 { let live = Double(b - last.b) * 8 / dt / 1e6; await MainActor.run { self.liveMbps = live } }
+            if dt > 0 { let live = Double(b - last.b) * 8 / dt / 1e6; let pr = min(1, now.timeIntervalSince(t0) / Self.seconds); await MainActor.run { self.liveMbps = live; self.progress = pr } }
             last = (now, b)
             if mark == nil, now.timeIntervalSince(t0) >= 1 { mark = (now, b) }
             // A task that finished is replaced so the line stays full for the whole test.

@@ -40,6 +40,13 @@ struct PanelView: View {
                         }
                     }
                     // An opened tile near the bottom would be cut off, so once it has grown, scroll just enough to show all of it.
+                    // Starting a speed test: make sure the whole test card is on screen.
+                    .onReceive(monitor.speed.$phase.removeDuplicates()) { p in
+                        guard p == .down, monitor.expanded == .network else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            withAnimation(reduceMotion ? nil : panelSpring) { proxy.scrollTo("speedcard", anchor: .bottom) }
+                        }
+                    }
                     .onChange(of: monitor.expanded) { _, open in
                         guard let open else { monitor.allSensors = false; return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
@@ -251,28 +258,94 @@ struct ModuleTile: View {
 
 // MARK: - Details
 
-/// The speed test: a button, live megabits while it runs, then the result. Phone speed testers show the same figures.
+/// The speed test card. It always takes the same space (a fixed frame), so starting, running and finishing a test
+/// never moves anything below it. Ring on the left shows the live speed, the right side shows the phase and results.
 private struct SpeedTestRows: View {
     @ObservedObject var speed: SpeedTest
     let bits: Bool
     let tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    static let height: CGFloat = 92
+
+    private var running: Bool { speed.running }
+    private var finished: Bool { speed.phase == .done }
+    /// Ring fill: the run's progress while testing, full when done, empty otherwise.
+    private var fill: Double { finished ? 1 : (running ? max(0.04, speed.progress) : 0) }
+    private var phaseTint: Color { speed.phase == .up ? Pal.second : tint }
+    private var centreValue: Double { running ? speed.liveMbps : (speed.downMbps ?? 0) }
+    private var spring: Animation { reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.42, dampingFraction: 0.82) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button(speed.running ? "Stop test" : (speed.phase == .idle ? "Test speed" : "Test again")) {
-                speed.running ? speed.cancel() : speed.start()
-            }.buttonStyle(QuietButtonStyle())
-            if speed.running {
-                KV(key: speed.phase == .down ? "Testing download…" : "Testing upload…", value: String(format: "%.0f Mbps", speed.liveMbps), tint: tint)
+        HStack(spacing: 12) {
+            ring
+            VStack(alignment: .leading, spacing: 6) {
+                phases
+                results
+                Button(running ? "Stop test" : (speed.phase == .idle || speed.phase == .failed ? "Test speed" : "Test again")) {
+                    speed.running ? speed.cancel() : speed.start()
+                }.buttonStyle(QuietButtonStyle())
             }
-            if let d = speed.downMbps { KV(key: "Test: download", value: String(format: "%.0f Mbps", d), tint: tint) }
-            if let u = speed.upMbps { KV(key: "Test: upload", value: String(format: "%.0f Mbps", u), tint: Pal.second) }
-            if let p = speed.pingMs { KV(key: "Test: delay", value: String(format: "%.0f ms", p)) }
-            if speed.phase == .failed { KV(key: "Test", value: "Could not reach the test server", tint: Pal.warn) }
-            if speed.phase == .idle {
-                Text("Uses a little data from Cloudflare's free test servers, only when you press it.").font(.system(size: 10)).foregroundStyle(Pal.mute)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: Self.height)
+        .padding(.top, 2)
+        .animation(spring, value: speed.phase)
+    }
+
+    private var ring: some View {
+        ZStack {
+            Circle().stroke(Pal.line, lineWidth: 6)
+            Circle().trim(from: 0, to: fill)
+                .stroke(phaseTint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(reduceMotion ? nil : .linear(duration: 0.3), value: fill)
+            VStack(spacing: 0) {
+                Text(String(format: "%.0f", centreValue))
+                    .font(.mono(17, .semibold)).foregroundStyle(Pal.ink)
+                    .contentTransition(.numericText(value: centreValue))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: Int(centreValue))
+                Text("Mbps").font(.mono(8.5)).foregroundStyle(Pal.mute)
             }
         }
-        .padding(.top, 2)
+        .frame(width: 74, height: 74)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Speed test")
+        .accessibilityValue(String(format: "%.0f megabits a second", centreValue))
+    }
+
+    /// Ping, Down, Up: the active one is bright, finished ones stay readable, the rest are dim.
+    private var phases: some View {
+        HStack(spacing: 10) {
+            chip("Ping", on: running && speed.phase == .down && speed.progress < 0.04, done: speed.pingMs != nil)
+            chip("Down", on: speed.phase == .down, done: speed.downMbps != nil)
+            chip("Up", on: speed.phase == .up, done: speed.upMbps != nil)
+        }
+    }
+
+    private func chip(_ t: String, on: Bool, done: Bool) -> some View {
+        Text(t).font(.system(size: 10.5, weight: on ? .semibold : .medium))
+            .foregroundStyle(on ? Pal.ink : (done ? Pal.second : Pal.mute.opacity(0.6)))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: on)
+    }
+
+    /// One fixed line of text whose content cross-fades between idle note, live phase, result and error.
+    @ViewBuilder private var results: some View {
+        Group {
+            if speed.phase == .failed {
+                Text("Could not reach the test server").foregroundStyle(Pal.warn)
+            } else if running {
+                Text(speed.phase == .down ? "Measuring download…" : "Measuring upload…").foregroundStyle(Pal.mute)
+            } else if finished {
+                Text(String(format: "Down %.0f · Up %.0f Mbps · %.0f ms", speed.downMbps ?? 0, speed.upMbps ?? 0, speed.pingMs ?? 0))
+                    .foregroundStyle(Pal.ink)
+            } else {
+                Text("Uses a little data from Cloudflare, only when you press it.").foregroundStyle(Pal.mute)
+            }
+        }
+        .font(.system(size: 10)).lineLimit(2).minimumScaleFactor(0.85)
+        .frame(maxWidth: .infinity, minHeight: 26, maxHeight: 26, alignment: .topLeading)
+        .id(speed.phase)
+        .transition(.opacity)
     }
 }
 
@@ -461,7 +534,7 @@ struct ModuleDetail: View {
             } else {
                 KV(key: "Status", value: "Not connected")
             }
-            SpeedTestRows(speed: monitor.speed, bits: monitor.prefs.netBits, tint: module.tint)
+            SpeedTestRows(speed: monitor.speed, bits: monitor.prefs.netBits, tint: module.tint).id("speedcard")
         }
     }
 

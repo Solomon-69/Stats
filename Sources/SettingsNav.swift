@@ -25,7 +25,7 @@ import SwiftUI
         for m in ModuleID.allCases.filter(\.availableHere) {
             r.append(Row(id: "mod.\(m.rawValue).show", tab: .modules))
         }
-        r += [Row(id: "login", tab: .general), Row(id: "alerts", tab: .general), Row(id: "checks", tab: .general),
+        r += [Row(id: "login", tab: .general), Row(id: "dock", tab: .general), Row(id: "alerts", tab: .general), Row(id: "checks", tab: .general),
                 Row(id: "unit.temp", tab: .general), Row(id: "unit.speed", tab: .general), Row(id: "refresh", tab: .general)]
         r.append(Row(id: "update", tab: .about))
         return r
@@ -73,6 +73,7 @@ import SwiftUI
         case "unit.temp": prefs.fahrenheit.toggle()
         case "unit.speed": prefs.netBits.toggle()
         case "login": prefs.launchAtLogin.toggle(); onLogin(prefs.launchAtLogin)
+        case "dock": prefs.showInDock.toggle()
         case "alerts": prefs.alerts.toggle()
         case "checks": prefs.internetChecks.toggle()
         case "update":

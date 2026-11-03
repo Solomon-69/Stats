@@ -159,6 +159,8 @@ final class Prefs: ObservableObject {
     /// Opt-in: plain alerts for low battery, full storage and squeezed memory.
     @Published var alerts: Bool { didSet { d.set(alerts, forKey: "alerts"); if alerts { Alerts.ask() } } }
     @Published var launchAtLogin: Bool
+    /// Off by default: Stats lives in the menu bar only. On adds it to the Dock and the app switcher too.
+    @Published var showInDock: Bool { didSet { d.set(showInDock, forKey: "showInDock") } }
 
     init() {
         let raw = d.stringArray(forKey: "shown")
@@ -187,6 +189,7 @@ final class Prefs: ObservableObject {
         internetChecks = d.bool(forKey: "internetChecks")
         alerts = d.bool(forKey: "alerts")
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        showInDock = d.bool(forKey: "showInDock")
         // Disk activity arrived after first releases: switch it on once for people who already have saved choices.
         if !d.bool(forKey: "seenDiskIO") { d.set(true, forKey: "seenDiskIO"); if raw != nil { shown.insert(.diskio) } }
     }

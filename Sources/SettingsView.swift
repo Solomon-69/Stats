@@ -172,7 +172,7 @@ struct SettingsView: View {
     private func iconCard(_ t: Color) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             RowLabel(symbol: "menubar.rectangle", title: "Menu bar icon",
-                     subtitle: "Pick how Stats shows up in the menu bar. Hidden keeps its place but draws nothing.", tint: t)
+                     subtitle: "Pick how Stats shows up in the menu bar.", tint: t)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
                 ForEach(MainIcon.allCases) { icon in
                     let on = prefs.mainIcon == icon
@@ -208,7 +208,13 @@ struct SettingsView: View {
                     .accessibilityAction { prefs.mainIcon = icon }
                 }
             }
+            if prefs.mainIcon == .hidden {
+                Text("Hidden: open Stats from Spotlight or Applications to get back here.")
+                    .font(.system(size: 11)).foregroundStyle(Pal.mute)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: prefs.mainIcon)
         .padding(12)
         .tileStyle(t, radius: 14)
     }
@@ -242,6 +248,10 @@ struct SettingsView: View {
             }
         }
         .modifier(pill("login"))
+        SettingRow(symbol: "dock.rectangle", title: "Show in Dock", subtitle: "Also keep Stats in the Dock and the app switcher", tint: t) {
+            SmoothSwitch(isOn: prefs.showInDock, title: "Show in Dock", tint: t) { want in prefs.showInDock = want }
+        }
+        .modifier(pill("dock"))
         pickerCard(symbol: "rectangle.expand.vertical", title: "Open tile", subtitle: "The tile that is already open when you open the panel. Stats remembers it.", tint: t) {
             let keys = [""] + ModuleID.allCases.filter { prefs.shown.contains($0) }.map(\.rawValue)
             let half = (keys.count + 1) / 2

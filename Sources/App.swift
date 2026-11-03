@@ -56,7 +56,7 @@ enum Log {
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        NSApp.setActivationPolicy(prefs.showInDock ? .regular : .accessory)
         if SMAppService.mainApp.status == .enabled { try? SMAppService.mainApp.register() }
         applyAppearance()
         lastRefresh = prefs.refresh
@@ -112,6 +112,8 @@ enum Log {
     }
 
     private func prefsChanged() {
+        let policy: NSApplication.ActivationPolicy = prefs.showInDock ? .regular : .accessory
+        if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
         applyAppearance()
         status.sync()
         if prefs.refresh != lastRefresh { lastRefresh = prefs.refresh; monitor.restartTimer() }
@@ -343,6 +345,7 @@ enum Log {
         case "introshot": introShot(name: p.count > 1 ? p[1] : "intro", page: p.count > 2 ? Int(p[2]) ?? 0 : 0, scheme: p.count > 3 ? p[3] : "light")
         case "introreset": UserDefaults.standard.removeObject(forKey: IntroPref.done)
         case "introdone": UserDefaults.standard.bool(forKey: IntroPref.done) ? Log.write("intro done") : Log.write("intro not done")
+        case "dock": prefs.showInDock = p.count > 1 && p[1] == "1"
         case "reopen": _ = applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)
         case "snap": snapshot(name: p.count > 1 ? p[1] : "snap", scheme: p.count > 2 ? p[2] : "light")
         case "quit": quit()
@@ -365,6 +368,8 @@ enum Log {
             "navCurrent": nav.current ?? "", "navTab": nav.tab.rawValue, "appearance": prefs.appearance, "themeIndex": prefs.themeIndex,
             "refresh": prefs.refresh, "fahrenheit": prefs.fahrenheit, "netBits": prefs.netBits, "invisibleIcon": prefs.invisibleIcon,
             "launchAtLogin": prefs.launchAtLogin,
+            "showInDock": prefs.showInDock,
+            "activationPolicy": NSApp.activationPolicy() == .regular ? "regular" : (NSApp.activationPolicy() == .accessory ? "accessory" : "prohibited"),
             "panelShown": popover.isShown || quietOpen, "publicAddress": m.netX.publicAddress ?? "", "delayMs": m.netX.delayMs ?? 0, "expanded": m.expanded?.rawValue ?? "", "panelModules": m.panelModules.map(\.rawValue),
         ]
         if let g = m.gpu { d["gpu"] = g }
