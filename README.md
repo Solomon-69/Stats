@@ -7,7 +7,7 @@
 **How your Mac is doing, in plain words.**
 
 <p>
-  <a href="https://github.com/Solomon-69/Stats/releases/latest"><img alt="Version 1.0.10" src="https://img.shields.io/badge/version-1.0.10-454952?style=flat-square"></a>
+  <a href="https://github.com/Solomon-69/Stats/releases/latest"><img alt="Version 1.0.11" src="https://img.shields.io/badge/version-1.0.11-454952?style=flat-square"></a>
   <img alt="macOS 14 or later" src="https://img.shields.io/badge/macOS-14%2B-1f1d1a?style=flat-square&logo=apple&logoColor=white">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-5b8a5a?style=flat-square"></a>
 </p>

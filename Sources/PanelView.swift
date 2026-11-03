@@ -264,6 +264,13 @@ struct ModuleTile: View {
 /// moves anything below it. Left: Ping, Down, Up rows, all live, with a thin progress line on the active one.
 /// Right: a gauge ring that fills with the live speed; the number inside rolls like the tile numbers. A small
 /// "Test" pill (turns into "Stop") sits beside the gauge.
+private struct PressScale: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
 private struct SpeedTestRows: View {
     @ObservedObject var speed: SpeedTest
     let bits: Bool
@@ -297,7 +304,7 @@ private struct SpeedTestRows: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 14) {
             VStack(spacing: 5) {
                 row("Ping", value: speed.pingMs.map { String(format: "%.0f ms", $0) }, active: speed.phase == .ping,
                     progress: speed.phase == .ping ? speed.progress : (speed.pingMs != nil ? 1 : 0), color: tint)
@@ -307,7 +314,6 @@ private struct SpeedTestRows: View {
                     progress: speed.phase == .up ? speed.progress : (speed.upMbps != nil ? 1 : 0), color: Pal.second)
             }
             .frame(maxWidth: .infinity)
-            testButton
             gauge
         }
         .frame(height: Self.height)
@@ -340,6 +346,9 @@ private struct SpeedTestRows: View {
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
             .frame(width: 52)
+            .offset(y: -5)
+            // The dial's open gap at the bottom holds the button, like a speedometer's.
+            testButton.offset(y: 29)
         }
         .frame(width: 76, height: 76)
         .accessibilityElement(children: .ignore)
@@ -350,16 +359,16 @@ private struct SpeedTestRows: View {
     private var testButton: some View {
         Button { speed.running ? speed.cancel() : speed.start() } label: {
             Text(running ? "Stop" : "Test")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(running ? Pal.ink : Pal.panel)
-                .frame(width: 44, height: 24)
+                .frame(width: 42, height: 19)
                 .background(Capsule().fill(running ? Pal.box : tint))
                 .overlay(Capsule().strokeBorder(Pal.line, lineWidth: running ? 1 : 0))
                 .contentShape(Capsule())
-                .id(running)
-                .transition(.opacity)
+                .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8), value: running)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScale())
+        .frame(height: 19)
         .help(running ? "Stop test" : "Test speed")
         .accessibilityLabel(running ? "Stop speed test" : "Test speed")
     }
