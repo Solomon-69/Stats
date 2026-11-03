@@ -107,14 +107,16 @@ struct Entrance: ViewModifier {
     @State private var shown = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func body(content: Content) -> some View {
+        // The spring is scoped to the fade and lift only. A withAnimation here also animated the popover's first layout,
+        // so on opening the whole panel could slide in from the top-left corner.
         content
-            .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 8)
+            .animation(shown ? .spring(response: 0.42, dampingFraction: 0.8).delay(0.03 + Double(index) * 0.025) : nil) {
+                $0.opacity(shown ? 1 : 0).offset(y: shown ? 0 : 8)
+            }
             .onChange(of: trigger) { _, _ in
                 guard !reduceMotion, index < 12 else { return }
-                var t = Transaction(); t.disablesAnimations = true
-                withTransaction(t) { shown = false }
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.8).delay(0.03 + Double(index) * 0.025)) { shown = true }
+                shown = false
+                DispatchQueue.main.async { shown = true }
             }
     }
 }
@@ -186,15 +188,14 @@ struct ChipRow<T: Hashable>: View {
     let selected: T
     let label: (T) -> String
     var tint: Color = Pal.accent
-    /// Options that mean "nothing" (like Off) look calm when picked instead of lighting up in colour.
-    var quiet: (T) -> Bool = { _ in false }
     let onPick: (T) -> Void
     var body: some View {
         HStack(spacing: 4) {
             ForEach(options, id: \.self) { o in
                 let on = o == selected
-                let fill: Color = on ? (quiet(o) ? Pal.edge : tint) : Pal.box
-                let ink: Color = on ? (quiet(o) ? Pal.ink : Pal.panel) : Pal.ink.opacity(0.85)
+                // Picked: panel-coloured text on the Settings accent, which keeps AA contrast in light and dark.
+                let fill: Color = on ? tint : Pal.box
+                let ink: Color = on ? Pal.panel : Pal.ink
                 Text(label(o))
                     .font(.system(size: 11.5, weight: on ? .semibold : .medium))
                     .foregroundStyle(ink)

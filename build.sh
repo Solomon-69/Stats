@@ -30,7 +30,7 @@ else codesign --force --deep --sign - "$APP"; fi
 [ "${NOINSTALL:-0}" = "1" ] && { echo "built $APP"; exit 0; }
 pkill -x StatsNew 2>/dev/null || true
 mkdir -p ~/Applications
-rm -rf ~/Applications/Stats.app; ditto "$APP" ~/Applications/Stats.app
+rm -rf ~/Applications/Stats.app; ditto "$APP" ~/Applications/Stats.app; rm -rf "$APP"   # leave only one Stats.app on the Mac (a second copy showed up in Spotlight)
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f ~/Applications/Stats.app
 open -g ~/Applications/Stats.app
 echo "installed ~/Applications/Stats.app"

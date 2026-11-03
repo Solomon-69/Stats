@@ -61,12 +61,12 @@ enum Log {
         lastRefresh = prefs.refresh
         monitor.start()
         status = StatusController(monitor: monitor, prefs: prefs)
-        status.onClick = { [weak self] button, module in self?.statusClicked(button, module) }
+        status.onClick = { [weak self] button in self?.statusClicked(button, nil) }
         monitor.onTick = { [weak self] in self?.status.refresh() }
 
         popover.delegate = self
         popover.behavior = .applicationDefined
-        popover.animates = true
+        popover.animates = false   // the pop-up animation slid the window in from the side while it sized itself; the tiles fade in instead
 
         prefs.objectWillChange.sink { [weak self] in DispatchQueue.main.async { self?.prefsChanged() } }.store(in: &bag)
         PanelGroup.listen { [weak self] in self?.closePopover() }
@@ -129,12 +129,19 @@ enum Log {
 
     private func openPopover(from button: NSStatusBarButton, module: ModuleID?) {
         removeMonitors()
-        ensureContent()
         if popover.isShown { popover.close() }
         shownFrom = button
+        // Read fresh numbers and build the panel at its final size before it appears: a panel shown first and sized
+        // afterwards drew its contents small in the top-left corner for a frame, then jumped into place.
         monitor.expanded = module
-        monitor.openCount += 1
         updateVisible(panel: true)
+        ensureContent()
+        if let host = popover.contentViewController?.view {
+            host.layoutSubtreeIfNeeded()
+            let fit = host.fittingSize
+            if fit.width > 10, fit.height > 10 { popover.contentViewController?.preferredContentSize = fit; popover.contentSize = fit }
+        }
+        monitor.openCount += 1
         bounce(button)
         PanelGroup.announceOpen()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -262,7 +269,6 @@ enum Log {
         case "settings": updateVisible(settings: true)
         case "closesettings": updateVisible(settings: false)
         case "expand": monitor.expanded = p.count > 1 ? ModuleID(rawValue: p[1]) : nil
-        case "bar": if p.count > 2, let m = ModuleID(rawValue: p[1]), let s = BarStyle(rawValue: p[2]) { prefs.setStyle(m, s) }
         case "show": if p.count > 2, let m = ModuleID(rawValue: p[1]) { if p[2] == "1" { prefs.shown.insert(m) } else { prefs.shown.remove(m) } }
         case "appearance": if p.count > 1 { prefs.appearance = Int(p[1]) ?? 0 }
         case "theme": if p.count > 1 { prefs.themeIndex = Int(p[1]) ?? 0 }
@@ -270,7 +276,6 @@ enum Log {
         case "tiles": if p.count > 1 { prefs.colourfulTiles = p[1] == "1" }
         case "invisible": if p.count > 1 { prefs.invisibleIcon = p[1] == "1" }
         case "freeze": monitor.frozen = p.count > 1 && p[1] == "1"
-        case "quietbars": StatusController.quiet = p.count > 1 && p[1] == "1"
         case "icon": if p.count > 1, let i = MainIcon(rawValue: p[1]) { prefs.mainIcon = i }
         case "iconsrc": if p.count > 1, let m = ModuleID(rawValue: p[1]), ModuleID.liveChoices.contains(m) { prefs.iconSource = m }
         case "icontint": if p.count > 1 { prefs.iconTinted = p[1] == "1" }
@@ -278,12 +283,6 @@ enum Log {
         case "refresh": if p.count > 1 { prefs.refresh = Int(p[1]) ?? 2 }
         case "units": if p.count > 2 { if p[1] == "temp" { prefs.fahrenheit = p[2] == "f" } else { prefs.netBits = p[2] == "bits" } }
         case "zones": prefs.zones = p.count > 1 ? p[1].split(separator: ",").map(String.init) : []
-        case "snapbar":
-            if p.count > 2, let m = ModuleID(rawValue: p[1]), let s = BarStyle(rawValue: p[2]), let rep = status.renderBar(m, style: s) {
-                let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/StatsRemake-snap")
-                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("bar-\(m.rawValue)-\(s.rawValue).png"))
-            }
         case "nav":
             let keys: [String: SettingsNav.Key] = ["up": .up, "down": .down, "left": .left, "right": .right, "space": .activate, "esc": .back]
             if p.count > 1, p[1] == "reset" { nav.current = nil; nav.tab = .look }
@@ -314,7 +313,7 @@ enum Log {
             "ownCPU": m.ownCPU, "ownMemory": m.ownMemory, "shown": prefs.shown.map(\.rawValue).sorted(),
             "navCurrent": nav.current ?? "", "navTab": nav.tab.rawValue, "appearance": prefs.appearance, "themeIndex": prefs.themeIndex,
             "refresh": prefs.refresh, "fahrenheit": prefs.fahrenheit, "netBits": prefs.netBits, "invisibleIcon": prefs.invisibleIcon,
-            "launchAtLogin": prefs.launchAtLogin, "barStyles": Dictionary(uniqueKeysWithValues: ModuleID.allCases.map { ($0.rawValue, prefs.style($0).rawValue) }),
+            "launchAtLogin": prefs.launchAtLogin,
             "panelShown": popover.isShown || quietOpen, "publicAddress": m.netX.publicAddress ?? "", "delayMs": m.netX.delayMs ?? 0, "expanded": m.expanded?.rawValue ?? "", "panelModules": m.panelModules.map(\.rawValue),
         ]
         if let g = m.gpu { d["gpu"] = g }
@@ -376,7 +375,9 @@ enum Log {
     /// The real Settings view in a window that is never shown, drawn to a PNG (so NSView parts like the icon pictures appear).
     private func settingsShot(name: String, tab: Int, scheme: String) {
         nav.tab = SettingsTab(rawValue: tab) ?? .look
-        let host = NSHostingView(rootView: SettingsView(prefs: prefs, monitor: monitor, nav: nav) { _ in })
+        var view = SettingsView(prefs: prefs, monitor: monitor, nav: nav) { _ in }
+        view.startTab = nav.tab   // the view picks its first page on appear
+        let host = NSHostingView(rootView: view)
         host.frame = NSRect(x: 0, y: 0, width: 780, height: 620)
         let win = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         win.isReleasedWhenClosed = false

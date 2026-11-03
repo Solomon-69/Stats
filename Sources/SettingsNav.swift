@@ -24,7 +24,6 @@ import SwiftUI
                        Row(id: "unit.temp", tab: .look), Row(id: "unit.speed", tab: .look), Row(id: "refresh", tab: .look)]
         for m in ModuleID.allCases {
             r.append(Row(id: "mod.\(m.rawValue).show", tab: .modules))
-            if m.barStyles.count > 1 { r.append(Row(id: "mod.\(m.rawValue).style", tab: .modules)) }
         }
         r += [Row(id: "login", tab: .general), Row(id: "alerts", tab: .general), Row(id: "checks", tab: .general)]
         r.append(Row(id: "update", tab: .about))
@@ -80,9 +79,8 @@ import SwiftUI
             if case .available = updater.state { Task { await updater.install() } } else { Task { await updater.check() } }
         default:
             let p = id.split(separator: ".").map(String.init)
-            guard p.count == 3, p[0] == "mod", let m = ModuleID(rawValue: p[1]) else { return }
-            if p[2] == "show" { if prefs.shown.contains(m) { prefs.shown.remove(m) } else { prefs.shown.insert(m) } }
-            else { prefs.setStyle(m, step(m.barStyles, prefs.style(m), d)) }
+            guard p.count == 3, p[0] == "mod", p[2] == "show", let m = ModuleID(rawValue: p[1]) else { return }
+            if prefs.shown.contains(m) { prefs.shown.remove(m) } else { prefs.shown.insert(m) }
         }
     }
 }
@@ -93,13 +91,19 @@ struct NavPill: ViewModifier {
     let id: String
     let ns: Namespace.ID
     var inset: CGFloat = 0
+    /// A module row glows in that module's colour (Graphics purple, Memory green); every other row in the Settings accent.
+    private var tint: Color {
+        let p = id.split(separator: ".")
+        if p.count > 1, p[0] == "mod", let m = ModuleID(rawValue: String(p[1])) { return m.tint }
+        return Pal.brand
+    }
     func body(content: Content) -> some View {
         content
             .id("row-" + id)
             .overlay {
                 if nav.current == id {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Pal.accent.opacity(0.10))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Pal.accent.opacity(0.75), lineWidth: 1.5))
+                    RoundedRectangle(cornerRadius: 16, style: .continuous).fill(tint.opacity(0.10))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(tint, lineWidth: 1.5))
                         .padding(-inset)
                         .allowsHitTesting(false)
                         .matchedGeometryEffect(id: "navpill", in: ns)

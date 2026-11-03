@@ -93,14 +93,6 @@ extension ModuleID {
         default: title
         }
     }
-    /// Which menu bar styles make sense (a graph needs history, the clock has no level to show as a bar).
-    var barStyles: [BarStyle] {
-        switch self {
-        case .clock: [.off, .text, .icon]
-        case .fans, .bluetooth: [.off, .text, .bar, .icon]
-        default: BarStyle.allCases
-        }
-    }
 }
 
 /// What the main Stats icon in the menu bar looks like.
@@ -121,27 +113,10 @@ enum MainIcon: String, CaseIterable, Identifiable {
     var width: CGFloat { self == .live ? 40 : 28 }
 }
 
-enum BarStyle: String, CaseIterable, Identifiable {
-    case off, text, graph, bar, icon
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .off: "Off"
-        case .text: "Numbers"
-        case .graph: "Graph"
-        case .bar: "Bar"
-        case .icon: "Icon"
-        }
-    }
-}
-
 /// Everything the user can change. Each one saves the moment it changes.
 final class Prefs: ObservableObject {
     private let d = UserDefaults.standard
     @Published var shown: Set<ModuleID> { didSet { d.set(shown.map(\.rawValue), forKey: "shown") } }
-    @Published var barStyles: [ModuleID: BarStyle] {
-        didSet { d.set(Dictionary(uniqueKeysWithValues: barStyles.map { ($0.key.rawValue, $0.value.rawValue) }), forKey: "barStyles") }
-    }
     @Published var refresh: Int { didSet { d.set(refresh, forKey: "refresh") } }
     @Published var fahrenheit: Bool { didSet { d.set(fahrenheit, forKey: "fahrenheit") } }
     @Published var netBits: Bool { didSet { d.set(netBits, forKey: "netBits") } }
@@ -174,11 +149,8 @@ final class Prefs: ObservableObject {
     init() {
         let raw = d.stringArray(forKey: "shown")
         shown = raw.map { Set($0.compactMap(ModuleID.init(rawValue:)).filter { $0 != .clock }) } ?? [.cpu, .gpu, .memory, .disk, .diskio, .network, .battery, .sensors, .fans, .bluetooth]
-        var styles: [ModuleID: BarStyle] = [:]
-        for (k, v) in (d.dictionary(forKey: "barStyles") as? [String: String]) ?? [:] {
-            if let m = ModuleID(rawValue: k), let s = BarStyle(rawValue: v) { styles[m] = s }
-        }
-        barStyles = styles
+        // Stats has one menu bar icon. Older versions could add one per module: forget those choices for good.
+        d.removeObject(forKey: "barStyles")
         refresh = d.object(forKey: "refresh") as? Int ?? 2
         fahrenheit = d.bool(forKey: "fahrenheit")
         netBits = d.bool(forKey: "netBits")
@@ -202,9 +174,6 @@ final class Prefs: ObservableObject {
         if !d.bool(forKey: "seenDiskIO") { d.set(true, forKey: "seenDiskIO"); if raw != nil { shown.insert(.diskio) } }
     }
 
-    func style(_ m: ModuleID) -> BarStyle { barStyles[m] ?? .off }
-    func setStyle(_ m: ModuleID, _ s: BarStyle) { barStyles[m] = s }
-    var barModules: [ModuleID] { ModuleID.allCases.filter { style($0) != .off } }
 }
 
 /// The live numbers. Samples on a timer; the panel redraws only while it is open.
@@ -290,7 +259,6 @@ final class Monitor: ObservableObject {
     }
 
     private func needs(_ m: ModuleID) -> Bool {
-        if prefs.style(m) != .off { return true }
         if prefs.mainIcon == .live && m == prefs.iconSource { return true }
         if visible { return prefs.shown.contains(m) }
         // Cheap readings keep running while the panel is closed, so its graphs open already full of recent history.
@@ -362,7 +330,7 @@ final class Monitor: ObservableObject {
         if needs(.battery) { battery = batR.sample() }
         if prefs.alerts { alertsR.check(battery: battery, disk: disk, mem: mem) }
         // Sensors, fans and gadgets are only read while the panel is open, or when pinned to the menu bar.
-        func live(_ x: ModuleID) -> Bool { needs(x) && (visible || prefs.style(x) != .off || (x == .sensors && temps.isEmpty) || (x == .sensors && prefs.mainIcon == .live && prefs.iconSource == .sensors)) }
+        func live(_ x: ModuleID) -> Bool { needs(x) && (visible || (x == .sensors && temps.isEmpty) || (x == .sensors && prefs.mainIcon == .live && prefs.iconSource == .sensors)) }
         if live(.sensors) {
             temps = senR.temperatures()
             tempsAt = ProcessInfo.processInfo.systemUptime

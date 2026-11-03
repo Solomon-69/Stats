@@ -14,7 +14,7 @@ enum SettingsTab: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var title: String { ["Look", "What to watch", "General", "About"][rawValue] }
     var blurb: String {
-        ["Light or dark, the menu bar icon, units and refresh", "Pick what shows up, and where", "Starting up and alerts", "What Stats costs your Mac"][rawValue]
+        ["Light or dark, the menu bar icon, units and refresh", "Pick the tiles the panel shows", "Starting up and alerts", "What Stats costs your Mac"][rawValue]
     }
     var symbol: String { ["paintpalette.fill", "square.grid.2x2.fill", "gearshape.fill", "info.circle.fill"][rawValue] }
     var tint: Color { Pal.brand }   // every tab and page shares the app's graphite colour, so switching tabs never changes colour
@@ -267,12 +267,6 @@ struct SettingsView: View {
                 }
             }
             .modifier(pill("mod.\(m.rawValue).show", inset: 4))
-            HStack(spacing: 8) {
-                Text("In the menu bar").font(.system(size: 11.5)).foregroundStyle(Pal.mute)
-                Spacer(minLength: 4)
-                ChipRow(options: m.barStyles, selected: prefs.style(m), label: { $0.label }, tint: m.tint, quiet: { $0 == .off }) { prefs.setStyle(m, $0) }
-            }
-            .modifier(pill("mod.\(m.rawValue).style", inset: 4))
             if m == .clock && prefs.shown.contains(.clock) { zones }
         }
         .padding(12)

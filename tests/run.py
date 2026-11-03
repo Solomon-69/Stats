@@ -32,18 +32,21 @@ def check(name, ok, detail=""):
 
 def near(a, b, tol): return abs(a - b) <= tol
 
-# whatever happens, leave the menu bar clean: only the main icon (tests switch extra menu bar items on and off)
 import atexit
-atexit.register(lambda: [post("show:clock:0", 0.05), post("theme:0", 0.05)] and [post(f"bar:{m}:off", 0.05) for m in ["cpu", "gpu", "memory", "disk", "network", "battery", "sensors", "fans", "bluetooth", "clock"]])
+atexit.register(lambda: [post("show:clock:0", 0.05), post("theme:0", 0.05)])
 
 # 0. fresh app (a clean process so earlier snapshot runs cannot skew the CPU check)
-sh("pkill -x StatsNew; open -g ~/Applications/Stats.app"); time.sleep(4)
+# Old versions could add one menu bar item per module. Plant those old choices first: the app must forget them on launch.
+sh("pkill -x StatsNew; defaults write com.solomon.Stats barStyles -dict cpu icon memory graph network text")
+sh("open -g ~/Applications/Stats.app"); time.sleep(4)
 sh(f"rm -rf '{SNAP}'")
 check("process running", bool(sh("pgrep -x StatsNew").strip()))
+bars0 = state()["bars"]
+check("only one menu bar item, even with old per-module choices saved", len(bars0) == 1 and bars0[0]["module"] == "main", f"items={len(bars0)}")
+check("old per-module choices deleted on launch", "Could not find key" in sh("defaults read com.solomon.Stats barStyles 2>&1"))
 post("close"); post("closesettings")
 for m in ["cpu", "gpu", "memory", "disk", "network", "battery", "sensors"]: post(f"show:{m}:1", 0.1)
-for m in ["cpu", "gpu", "memory", "disk", "network", "battery", "sensors", "fans", "bluetooth", "clock"]: post(f"bar:{m}:off", 0.1)
-post("quietbars:1", 0.1); post("units:temp:c", 0.1); post("units:net:bytes", 0.1); post("refresh:2", 0.1); post("appearance:0", 0.1); post("invisible:0", 0.1)
+post("units:temp:c", 0.1); post("units:net:bytes", 0.1); post("refresh:2", 0.1); post("appearance:0", 0.1); post("invisible:0", 0.1)
 post("zones:America/New_York,Europe/London,Asia/Tokyo", 0.1)
 
 # 1. numbers vs real tools
@@ -133,14 +136,6 @@ post("refresh:5", 0.6); check("refresh saved", state()["prefs"]["refresh"] == 5)
 post("appearance:2", 0.6); check("appearance dark saved", state()["prefs"]["appearance"] == 2); post("appearance:0", 0.3)
 post("invisible:1", 0.6); st = state(); main = [b for b in st["bars"] if b["module"] == "main"][0]
 check("invisible icon keeps width", main["invisible"] and main["length"] == 28, f"len={main['length']}"); post("invisible:0", 0.3)
-styles = {"text": None, "graph": None, "bar": None, "icon": None}
-for mod in ["cpu", "gpu", "memory", "disk", "network", "battery", "sensors"]:
-    for sty in styles:
-        post(f"bar:{mod}:{sty}", 0.3); post(f"snapbar:{mod}:{sty}", 0.15)
-        st = state(); b = [x for x in st["bars"] if x["module"] == mod]
-        check(f"bar {mod} {sty}", bool(b) and b[0]["style"] == sty and b[0]["length"] > 10, f"len={b[0]['length'] if b else None}")
-    post(f"bar:{mod}:off", 0.3)
-    check(f"bar {mod} off removes item", not [x for x in state()["bars"] if x["module"] == mod])
 post("zones:Asia/Tokyo", 0.5); check("zones saved", state()["prefs"]["zones"] == ["Asia/Tokyo"])
 post("zones:America/New_York,Europe/London,Asia/Tokyo", 0.3)
 
@@ -241,9 +236,6 @@ post("nav:left", 0.3); check("nav: Left steps it back by one", state()["prefs"][
 goto("checks"); c0 = state()["prefs"]["checks"]
 post("nav:space", 0.4); check("nav: Space flips Internet checks", state()["prefs"]["checks"] == (not c0))
 post("nav:space", 0.4); check("nav: Space flips it back (checks)", state()["prefs"]["checks"] == c0)
-goto("mod.cpu.style"); b0 = state()["barStyles"]["cpu"]
-post("nav:right", 0.4); check("nav: Right steps a menu bar style", state()["barStyles"]["cpu"] != b0)
-post("bar:cpu:off", 0.3)
 post("nav:esc", 0.3); check("nav: Esc clears the highlight", cur() == "")
 # snapshot with the highlight showing
 post("nav:reset", 0.2); post("nav:down", 0.2); post("nav:down", 0.2); post("nav:down", 0.3)
