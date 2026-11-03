@@ -94,7 +94,7 @@ impl Sampler {
         sys.refresh_cpu_usage();
         sys.refresh_memory();
         let pid = Pid::from_u32(std::process::id());
-        let old = Instant::now() - Duration::from_secs(3600);
+        let old = Instant::now().checked_sub(Duration::from_secs(3600)).unwrap_or_else(Instant::now);
         Sampler {
             sys,
             disks: Disks::new_with_refreshed_list(),
@@ -137,6 +137,7 @@ impl Sampler {
 
     pub fn snapshot(&mut self) -> Snapshot {
         let now = Instant::now();
+        let first = !self.cpu_primed;
         // The processor reading is an average since the last look; after a long gap look twice, a moment apart.
         if now.duration_since(self.last_cpu) > STALE || !self.cpu_primed {
             self.sys.refresh_cpu_usage();
@@ -147,7 +148,7 @@ impl Sampler {
         self.last_cpu = Instant::now();
         self.sys.refresh_memory();
 
-        let stale_proc = now.duration_since(self.last_proc) > STALE * 2;
+        let stale_proc = first || now.duration_since(self.last_proc) > STALE * 2;
         let kind = ProcessRefreshKind::nothing().with_cpu().with_memory().with_disk_usage();
         if stale_proc {
             self.sys.refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
@@ -215,7 +216,7 @@ impl Sampler {
                 .collect();
         }
 
-        if now.duration_since(self.last_batt) > Duration::from_secs(4) {
+        if first || now.duration_since(self.last_batt) > Duration::from_secs(4) {
             self.last_batt = now;
             self.cached.battery = read_battery();
         }
