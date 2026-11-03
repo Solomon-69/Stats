@@ -172,13 +172,13 @@ struct SettingsView: View {
 
     /// Every look the main menu bar icon can take, drawn by the real menu bar code so the picture is what you get.
     private func iconCard(_ t: Color) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 9) {
             RowLabel(symbol: "menubar.rectangle", title: "Menu bar icon",
                      subtitle: "Pick how Stats shows up in the menu bar.", tint: t)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
                 ForEach(MainIcon.allCases) { icon in
                     let on = prefs.mainIcon == icon
-                    VStack(spacing: 6) {
+                    VStack(spacing: 3) {
                         Group {
                             if icon == .hidden {
                                 Image(systemName: "eye.slash").font(.system(size: 14, weight: .medium)).foregroundStyle(Pal.mute)
@@ -194,12 +194,12 @@ struct SettingsView: View {
                                     .frame(width: icon.width, height: 24)
                             }
                         }
-                        .scaleEffect(1.25)
-                        .frame(height: 30)
+                        .scaleEffect(1.1)
+                        .frame(height: 22)
                         Text(icon.label).font(.system(size: 11, weight: on ? .semibold : .medium))
                             .foregroundStyle(on ? Pal.panel : Pal.ink.opacity(0.85)).lineLimit(1)
                     }
-                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .frame(maxWidth: .infinity).padding(.vertical, 7)
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(on ? t : Pal.box))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(on ? Color.clear : Pal.line, lineWidth: 1))
                     .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -217,7 +217,7 @@ struct SettingsView: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: prefs.mainIcon)
-        .padding(12)
+        .padding(10)
         .tileStyle(t, radius: 14)
     }
 
