@@ -263,7 +263,7 @@ final class ProcessReader {
         return Double(t.numer) / Double(t.denom)
     }()
 
-    func sample() -> [ProcRow] {
+    func sample(exactMemory: Bool = true) -> [ProcRow] {
         // proc_listallpids returns a number of processes (not bytes); the buffer size argument is in bytes.
         let count = proc_listallpids(nil, 0)
         guard count > 0 else { return [] }
@@ -272,7 +272,7 @@ final class ProcessReader {
         guard n > 0 else { return [] }
         let now = ProcessInfo.processInfo.systemUptime
         // After a long gap (panel closed) old tick counts would average a whole stretch of time, so start fresh.
-        if prevAt > 0, now - prevAt > 6 { prev = [:]; prevAt = 0 }
+        if prevAt > 0, now - prevAt > 15 { prev = [:]; prevAt = 0 }
         let dt = (now - prevAt) * 1e9
         var cur: [Int32: UInt64] = [:]
         var rows: [ProcRow] = []
@@ -286,6 +286,7 @@ final class ProcessReader {
             rows.append(ProcRow(id: pid, name: name(pid), cpu: cpu, memory: Double(ti.pti_resident_size)))
         }
         prev = cur; prevAt = now
+        guard exactMemory else { return rows }
         // The exact memory figure (what Activity Monitor shows) costs a call per app, so only the biggest ones get it.
         let big = Set(rows.sorted { $0.memory > $1.memory }.prefix(40).map(\.id))
         for i in rows.indices where big.contains(rows[i].id) {

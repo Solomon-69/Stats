@@ -269,10 +269,12 @@ enum Log {
         case "checks": if p.count > 1 { prefs.internetChecks = p[1] == "1" }
         case "tiles": if p.count > 1 { prefs.colourfulTiles = p[1] == "1" }
         case "invisible": if p.count > 1 { prefs.invisibleIcon = p[1] == "1" }
+        case "freeze": monitor.frozen = p.count > 1 && p[1] == "1"
         case "quietbars": StatusController.quiet = p.count > 1 && p[1] == "1"
         case "icon": if p.count > 1, let i = MainIcon(rawValue: p[1]) { prefs.mainIcon = i }
         case "iconsrc": if p.count > 1, let m = ModuleID(rawValue: p[1]), ModuleID.liveChoices.contains(m) { prefs.iconSource = m }
         case "icontint": if p.count > 1 { prefs.iconTinted = p[1] == "1" }
+        case "accent": if p.count > 1 { prefs.settingsAccent = SettingsAccent.clamp(Int(p[1]) ?? 0) }
         case "refresh": if p.count > 1 { prefs.refresh = Int(p[1]) ?? 2 }
         case "units": if p.count > 2 { if p[1] == "temp" { prefs.fahrenheit = p[2] == "f" } else { prefs.netBits = p[2] == "bits" } }
         case "zones": prefs.zones = p.count > 1 ? p[1].split(separator: ",").map(String.init) : []
@@ -318,7 +320,7 @@ enum Log {
         if let g = m.gpu { d["gpu"] = g }
         d["bars"] = status.info()
         d["summary"] = Dictionary(uniqueKeysWithValues: ModuleID.allCases.map { ($0.rawValue, ["value": m.summary($0).value, "subtitle": m.summary($0).subtitle]) })
-        d["prefs"] = ["refresh": prefs.refresh, "fahrenheit": prefs.fahrenheit, "netBits": prefs.netBits, "appearance": prefs.appearance, "invisible": prefs.invisibleIcon, "icon": prefs.mainIcon.rawValue, "iconSource": prefs.iconSource.rawValue, "iconTinted": prefs.iconTinted, "theme": prefs.themeIndex, "tiles": prefs.colourfulTiles, "checks": prefs.internetChecks, "alerts": prefs.alerts, "zones": prefs.zones]
+        d["prefs"] = ["refresh": prefs.refresh, "fahrenheit": prefs.fahrenheit, "netBits": prefs.netBits, "appearance": prefs.appearance, "invisible": prefs.invisibleIcon, "icon": prefs.mainIcon.rawValue, "iconSource": prefs.iconSource.rawValue, "iconTinted": prefs.iconTinted, "accent": prefs.settingsAccent, "theme": prefs.themeIndex, "tiles": prefs.colourfulTiles, "checks": prefs.internetChecks, "alerts": prefs.alerts, "zones": prefs.zones]
         if let b = m.battery { d["battery"] = ["percent": b.percent, "charging": b.charging, "plugged": b.pluggedIn, "cycles": b.cycles,
                                                 "health": b.health ?? -1, "secondsLeft": b.secondsLeft ?? -1] }
         if let w = popover.contentViewController?.view.window { d["panelFrame"] = NSStringFromRect(w.frame); d["panelWindow"] = w.windowNumber }

@@ -20,7 +20,7 @@ import SwiftUI
 
     /// Every setting in the order the pages show them.
     var rows: [Row] {
-        var r: [Row] = [Row(id: "appearance", tab: .look), Row(id: "icon", tab: .look), Row(id: "iconsource", tab: .look), Row(id: "icontint", tab: .look),
+        var r: [Row] = [Row(id: "appearance", tab: .look), Row(id: "accent", tab: .look), Row(id: "icon", tab: .look), Row(id: "iconsource", tab: .look), Row(id: "icontint", tab: .look),
                        Row(id: "unit.temp", tab: .look), Row(id: "unit.speed", tab: .look), Row(id: "refresh", tab: .look)]
         for m in ModuleID.allCases {
             r.append(Row(id: "mod.\(m.rawValue).show", tab: .modules))
@@ -64,6 +64,7 @@ import SwiftUI
     private func adjust(_ id: String, _ d: Int, activate: Bool = false) {
         switch id {
         case "appearance": prefs.appearance = step([0, 1, 2], prefs.appearance, d)
+        case "accent": prefs.settingsAccent = step(Array(SettingsAccent.all.indices), prefs.settingsAccent, d)
         case "theme": prefs.themeIndex = step(Array(ThemeStore.all.indices), min(prefs.themeIndex, ThemeStore.all.count - 1), d)
         case "icon": prefs.mainIcon = step(MainIcon.allCases, prefs.mainIcon, d)
         case "iconsource": prefs.iconSource = step(ModuleID.liveChoices, prefs.iconSource, d)

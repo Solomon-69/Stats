@@ -48,8 +48,8 @@ enum Pal {
     }
     /// Companion colours so no screen is one flat colour: second chart line, section colours in Settings.
     static let second = Color(nsColor: dyn(0xE58A3A, 0xF2A25C))
-    /// The app's own colour (the graphite metal of its icon): graphite in light mode, silver in dark.
-    static let brand = Color(nsColor: dyn(0x454952, 0xC5C9D2))
+    /// The Settings accent (graphite by default, matching the icon). Only the Settings screens use it.
+    static var brand: Color { let a = SettingsAccent.all[SettingsAccent.current]; return Color(nsColor: dyn(a.light, a.dark)) }
     static let violet = Color(nsColor: dyn(0x8A6FD0, 0xA58BE8))
     static let blue = Color(nsColor: dyn(0x5B86D6, 0x7EA3EA))
     static let teal = Color(nsColor: dyn(0x3FA48F, 0x58C2AB))
@@ -212,4 +212,15 @@ struct ChipRow<T: Hashable>: View {
             }
         }
     }
+}
+
+/// Accent colours for the Settings screens (light shade, dark shade). Selected chips and tabs put the panel colour on top,
+/// and each pair keeps WCAG AA contrast for that text: at least 4.9 to 1 in light and 5.8 to 1 in dark.
+enum SettingsAccent {
+    static let all: [(name: String, light: UInt32, dark: UInt32)] = [
+        ("Graphite", 0x454952, 0xC5C9D2), ("Blue", 0x2160C4, 0x82B1F2), ("Teal", 0x0B7268, 0x4FD1C0),
+        ("Orchid", 0xB0307F, 0xE25AA4), ("Orange", 0xB04A0A, 0xF59A4A),
+    ]
+    static var current = 0
+    static func clamp(_ i: Int) -> Int { min(max(i, 0), all.count - 1) }
 }

@@ -155,6 +155,10 @@ final class Prefs: ObservableObject {
     /// What the Live graph icon draws.
     @Published var iconSource: ModuleID { didSet { d.set(iconSource.rawValue, forKey: "iconSource") } }
     @Published var iconTinted: Bool { didSet { d.set(iconTinted, forKey: "iconTinted") } }
+    /// Which accent colour the Settings screens use (an index into SettingsAccent.all). Never touches the panel or icons.
+    @Published var settingsAccent: Int {
+        didSet { d.set(settingsAccent, forKey: "settingsAccent"); SettingsAccent.current = SettingsAccent.clamp(settingsAccent) }
+    }
     /// Kept for the test hooks: the hidden icon is one of the icon choices.
     var invisibleIcon: Bool {
         get { mainIcon == .hidden }
@@ -181,6 +185,9 @@ final class Prefs: ObservableObject {
         appearance = d.integer(forKey: "appearance")
         mainIcon = d.string(forKey: "mainIcon").flatMap(MainIcon.init(rawValue:)) ?? (d.bool(forKey: "invisibleIcon") ? .hidden : .bars)
         iconTinted = d.bool(forKey: "iconTinted")
+        let accent = SettingsAccent.clamp(d.integer(forKey: "settingsAccent"))
+        settingsAccent = accent
+        SettingsAccent.current = accent
         iconSource = d.string(forKey: "iconSource").flatMap(ModuleID.init(rawValue:)).flatMap { ModuleID.liveChoices.contains($0) ? $0 : nil } ?? .cpu
         // The colourful look is the only look now (the switch was removed), whatever an older version saved.
         themeIndex = 0
@@ -300,7 +307,15 @@ final class Monitor: ObservableObject {
         a.append(max(0, v)); if a.count > keep { a.removeFirst(a.count - keep) }
     }
 
+    #if STATS_TEST
+    /// Tests freeze the readings so two pictures of the panel can be compared pixel for pixel.
+    var frozen = false
+    #endif
+
     func sample() {
+        #if STATS_TEST
+        if frozen { return }
+        #endif
         sampleAt = ProcessInfo.processInfo.systemUptime
         if needs(.cpu), let c = cpuR.sample() { cpu = c; push(.cpu, c.total) }
         if needs(.memory), let m = memR.sample() { mem = m; push(.memory, m.fraction) }
@@ -331,7 +346,10 @@ final class Monitor: ObservableObject {
         }
         updateSteady(now)
         if visible {
-            if now - procAt >= 2 { procAt = now; procs = procR.sample() }
+            // The app list is the costliest reading (one call per running app), so it is only kept fresh while a tile that
+            // lists apps is open; otherwise it refreshes every 10 seconds for the "Busiest" line.
+            let listing = expanded == .cpu || expanded == .memory
+            if now - procAt >= (listing ? 3 : 10) { procAt = now; procs = procR.sample(exactMemory: expanded == .memory) }
             if now - ownAt > 2 { ownAt = now; let s = selfMeter.sample(); ownCPU = s.cpu; ownMemory = s.memory }
             objectWillChange.send()
         }

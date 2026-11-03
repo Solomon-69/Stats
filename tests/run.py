@@ -216,7 +216,7 @@ def goto(row, limit=40):
     return cur() == row
 post("nav:reset", 0.2)
 post("nav:down", 0.3); check("nav: first Down highlights Appearance", cur() == "appearance")
-for _ in range(7): post("nav:down", 0.12)
+for _ in range(8): post("nav:down", 0.12)
 check("nav: Down walks to the next page's first row", cur() == "mod.cpu.show" and state()["navTab"] == 1, cur())
 post("nav:up", 0.2); check("nav: Up goes back a row", cur() == "refresh" and state()["navTab"] == 0, cur())
 post("nav:reset", 0.2); post("nav:up", 0.3)
@@ -250,6 +250,17 @@ post("nav:reset", 0.2); post("nav:down", 0.2); post("nav:down", 0.2); post("nav:
 for scheme in ["light", "dark"]: post(f"snap:navhl:{scheme}", 1.0)
 check("nav: highlight snapshot drawn", os.path.exists(f"{SNAP}/navhl-settings0-light.png") and os.path.exists(f"{SNAP}/navhl-settings0-dark.png"))
 post("nav:reset", 0.2)
+
+# accent colour: saved, and the main panel looks exactly the same whichever accent is chosen
+post("accent:3", 0.3); check("accent colour saved", state()["prefs"]["accent"] == 3)
+post("freeze:1", 1.2)
+for sch in ["light", "dark"]:
+    post("accent:0", 0.3); post(f"snap:acc0:{sch}", 1.5); post("accent:3", 0.3); post(f"snap:acc3:{sch}", 1.5)
+    a = open(os.path.join(SNAP, f"acc0-panel-{sch}.png"), "rb").read(); b = open(os.path.join(SNAP, f"acc3-panel-{sch}.png"), "rb").read()
+    check(f"panel identical with orchid accent ({sch})", a == b and len(a) > 1000, f"{len(a)} vs {len(b)} bytes")
+post("accent:1", 0.3); post("setshot:accblue:0:light", 1.2); post("setshot:accblue:0:dark", 1.2)
+post("accent:3", 0.3); post("setshot:accorchid:0:light", 1.2); post("setshot:accorchid:0:dark", 1.2)
+post("accent:0", 0.3); post("freeze:0", 0.3)
 
 print(f"\n{passes} passed, {len(fails)} failed")
 if fails: print("FAILED:", ", ".join(fails)); sys.exit(1)

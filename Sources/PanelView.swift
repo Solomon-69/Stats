@@ -23,12 +23,21 @@ struct PanelView: View {
         VStack(spacing: 10) {
             header
             if scrolls {
-                ScrollView(showsIndicators: false) {
-                    cards(modules).background(GeometryReader { Color.clear.preference(key: HeightKey.self, value: $0.size.height) })
+                ScrollViewReader { proxy in
+                    ScrollView(showsIndicators: false) {
+                        cards(modules).background(GeometryReader { Color.clear.preference(key: HeightKey.self, value: $0.size.height) })
+                    }
+                    .frame(height: min(contentHeight, Self.maxListHeight))
+                    .scrollBounceBehavior(.basedOnSize)
+                    .onPreferenceChange(HeightKey.self) { contentHeight = $0 }
+                    // An opened tile near the bottom would be cut off, so once it has grown, scroll just enough to show all of it.
+                    .onChange(of: monitor.expanded) { _, open in
+                        guard let open else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                            withAnimation(reduceMotion ? nil : panelSpring) { proxy.scrollTo(open, anchor: nil) }
+                        }
+                    }
                 }
-                .frame(height: min(contentHeight, Self.maxListHeight))
-                .scrollBounceBehavior(.basedOnSize)
-                .onPreferenceChange(HeightKey.self) { contentHeight = $0 }
             } else {
                 cards(modules)   // test snapshots: ImageRenderer cannot draw a ScrollView
             }
@@ -69,6 +78,7 @@ struct PanelView: View {
                                 ModuleTile(module: m, monitor: monitor, expanded: monitor.expanded == m, wide: row.count == 1) {
                                     withAnimation(reduceMotion ? nil : panelSpring) { monitor.expanded = monitor.expanded == m ? nil : m }
                                 }
+                                .id(m)
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)

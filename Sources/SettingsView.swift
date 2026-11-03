@@ -114,6 +114,10 @@ struct SettingsView: View {
             ChipRow(options: [0, 1, 2], selected: prefs.appearance, label: { ["Auto", "Light", "Dark"][$0] }, tint: t) { prefs.appearance = $0 }
         }
         .modifier(pill("appearance"))
+        SettingRow(symbol: "paintbrush.pointed.fill", title: "Accent colour", subtitle: "Colours these Settings only. The panel and icons stay as they are.", tint: t) {
+            AccentSwatches(selected: prefs.settingsAccent) { prefs.settingsAccent = $0 }
+        }
+        .modifier(pill("accent"))
         iconCard(t)
             .modifier(pill("icon"))
         pickerCard(symbol: "waveform.path.ecg", title: "Live graph shows", subtitle: "What the Live graph icon follows in the menu bar.", tint: t) {
@@ -380,5 +384,33 @@ private struct SidebarRow: View {
         .accessibilityLabel(tab.title)
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
+    }
+}
+
+/// Round colour swatches for the Settings accent. The ring slides to the chosen one with a spring.
+private struct AccentSwatches: View {
+    let selected: Int
+    let choose: (Int) -> Void
+    @Namespace private var ring
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(SettingsAccent.all.indices, id: \.self) { i in
+                let a = SettingsAccent.all[i]
+                ZStack {
+                    if i == selected {
+                        Circle().strokeBorder(Pal.ink.opacity(0.55), lineWidth: 2).matchedGeometryEffect(id: "ring", in: ring)
+                    }
+                    Circle().fill(Color(nsColor: dyn(a.light, a.dark))).padding(4)
+                }
+                .frame(width: 26, height: 26)
+                .contentShape(Circle())
+                .onTapGesture { withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) { choose(i) } }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(a.name) accent")
+                .accessibilityAddTraits(i == selected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction { choose(i) }
+            }
+        }
     }
 }
