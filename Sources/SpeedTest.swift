@@ -15,7 +15,7 @@ enum WiFiInfo {
 }
 
 final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
-    enum Phase: Equatable { case idle, down, up, done, failed }
+    enum Phase: Equatable { case idle, ping, down, up, done, failed }
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var downMbps: Double?
     @Published private(set) var upMbps: Double?
@@ -28,17 +28,21 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
     private var bytes = 0                 // bytes moved in the current phase
     private var session: URLSession?
     private var runID = 0
+    private var downURL = URL(string: "https://speed.cloudflare.com/__down?bytes=25000000")!
+    private static let cloudflareDown = URL(string: "https://speed.cloudflare.com/__down?bytes=25000000")!
+    /// A second free public test file, used only when Cloudflare turns the big download away (it rate-limits repeat tests).
+    private static let backupDown = URL(string: "https://proof.ovh.net/files/100Mb.dat")!
     private static let streams = 4
     private static let seconds = 6.0
 
-    var running: Bool { phase == .down || phase == .up }
+    var running: Bool { phase == .ping || phase == .down || phase == .up }
 
     func start() {
         guard !running else { return }
         runID += 1
         let id = runID
         downMbps = nil; upMbps = nil; pingMs = nil; liveMbps = 0; progress = 0
-        phase = .down
+        phase = .ping
         let cfg = URLSessionConfiguration.ephemeral
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         cfg.timeoutIntervalForRequest = 15
@@ -47,6 +51,10 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
         Task { [weak self] in
             guard let self else { return }
             await self.ping(id)
+            guard id == self.runID else { return }
+            await self.pickDownload()
+            guard id == self.runID else { return }
+            await MainActor.run { self.phase = .down; self.progress = 0 }
             let down = await self.measure(id, phase: .down)
             guard id == self.runID else { return }
             await MainActor.run { self.downMbps = down; self.phase = .up; self.liveMbps = 0; self.progress = 0 }
@@ -66,14 +74,28 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
         phase = .idle; liveMbps = 0; progress = 0
     }
 
+    /// Asks for a single byte of the big download: if Cloudflare answers, use it, otherwise use the backup file.
+    private func pickDownload() async {
+        downURL = Self.cloudflareDown
+        guard let s = session else { return }
+        var r = URLRequest(url: Self.cloudflareDown)
+        r.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        if let (_, resp) = try? await s.data(for: r), let code = (resp as? HTTPURLResponse)?.statusCode, code == 200 || code == 206 { return }
+        downURL = Self.backupDown
+    }
+
+    /// Six quick round trips; each one shows up at once (the number moves live), the best one is the result.
     private func ping(_ id: Int) async {
         guard let url = URL(string: "https://speed.cloudflare.com/__down?bytes=0"), let s = session else { return }
         var best: Double?
-        for _ in 0..<3 {
+        for k in 0..<6 {
+            guard id == runID else { return }
             let t0 = Date()
-            if (try? await s.data(from: url)) != nil {
+            if let (_, r) = try? await s.data(from: url), (r as? HTTPURLResponse)?.statusCode == 200 {
                 let ms = Date().timeIntervalSince(t0) * 1000
                 best = min(best ?? ms, ms)
+                let shown = ms, frac = Double(k + 1) / 6
+                await MainActor.run { self.pingMs = shown; self.progress = frac }
             }
         }
         guard id == runID else { return }
@@ -88,7 +110,7 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
         let body = Data(count: 8_000_000)
         for _ in 0..<Self.streams {
             if p == .down {
-                tasks.append(s.dataTask(with: URL(string: "https://speed.cloudflare.com/__down?bytes=25000000")!))
+                tasks.append(s.dataTask(with: downURL))
             } else {
                 var r = URLRequest(url: URL(string: "https://speed.cloudflare.com/__up")!)
                 r.httpMethod = "POST"
@@ -110,7 +132,7 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
             // A task that finished is replaced so the line stays full for the whole test.
             for (i, t) in tasks.enumerated() where t.state == .completed {
                 let n: URLSessionTask
-                if p == .down { n = s.dataTask(with: URL(string: "https://speed.cloudflare.com/__down?bytes=25000000")!) }
+                if p == .down { n = s.dataTask(with: downURL) }
                 else {
                     var r = URLRequest(url: URL(string: "https://speed.cloudflare.com/__up")!)
                     r.httpMethod = "POST"
@@ -130,7 +152,7 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
     /// Only a real answer counts: a rate-limited or refused reply (429, 403...) must not look like a 0 Mbps result.
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
-        if let h = response as? HTTPURLResponse, h.statusCode != 200 { completionHandler(.cancel) } else { completionHandler(.allow) }
+        if let h = response as? HTTPURLResponse, !(200...206).contains(h.statusCode) { completionHandler(.cancel) } else { completionHandler(.allow) }
     }
 
     #if STATS_TEST

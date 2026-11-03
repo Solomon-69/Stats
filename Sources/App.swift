@@ -338,7 +338,7 @@ enum Log {
         case "opentab": prefs.openTab = p.count > 1 ? p[1] : ""
         case "speedtest": monitor.speed.start()
         case "speedset":   // speedset:phase:live:down:up:ping:progress
-            let ph: [String: SpeedTest.Phase] = ["idle": .idle, "down": .down, "up": .up, "done": .done, "failed": .failed]
+            let ph: [String: SpeedTest.Phase] = ["idle": .idle, "ping": .ping, "down": .down, "up": .up, "done": .done, "failed": .failed]
             func n(_ i: Int) -> Double? { p.count > i ? Double(p[i]) : nil }
             monitor.speed.testSet(phase: ph[p.count > 1 ? p[1] : "idle"] ?? .idle, live: n(2) ?? 0, down: n(3), up: n(4), ping: n(5), progress: n(6) ?? 0)
         case "state": writeState()
@@ -379,7 +379,7 @@ enum Log {
         if let g = m.gpu { d["gpu"] = g }
         d["bars"] = status.info()
         d["summary"] = Dictionary(uniqueKeysWithValues: ModuleID.allCases.map { ($0.rawValue, ["value": m.summary($0).value, "subtitle": m.summary($0).subtitle]) })
-        d["speed"] = ["phase": "\(monitor.speed.phase)", "down": monitor.speed.downMbps ?? -1, "up": monitor.speed.upMbps ?? -1, "ping": monitor.speed.pingMs ?? -1, "wifi": WiFiInfo.linkMbps ?? -1]
+        d["speed"] = ["phase": "\(monitor.speed.phase)", "down": monitor.speed.downMbps ?? -1, "up": monitor.speed.upMbps ?? -1, "ping": monitor.speed.pingMs ?? -1, "live": monitor.speed.liveMbps, "wifi": WiFiInfo.linkMbps ?? -1]
         d["prefs"] = ["refresh": prefs.refresh, "fahrenheit": prefs.fahrenheit, "netBits": prefs.netBits, "appearance": prefs.appearance, "invisible": prefs.invisibleIcon, "icon": prefs.mainIcon.rawValue, "extras": prefs.extras.map(\.rawValue), "iconSource": prefs.iconSource.rawValue, "iconTinted": prefs.iconTinted, "accent": prefs.settingsAccent, "theme": prefs.themeIndex, "tiles": prefs.colourfulTiles, "checks": prefs.internetChecks, "alerts": prefs.alerts, "zones": prefs.zones]
         if let b = m.battery { d["battery"] = ["percent": b.percent, "charging": b.charging, "plugged": b.pluggedIn, "cycles": b.cycles,
                                                 "health": b.health ?? -1, "secondsLeft": b.secondsLeft ?? -1] }
