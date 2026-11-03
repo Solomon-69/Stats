@@ -5,7 +5,7 @@ $env:STATS_TEST = $View
 $p = Start-Process -FilePath $Exe -PassThru
 Start-Sleep -Seconds $Warm
 function Tree($id) { $kids = Get-CimInstance Win32_Process -Filter "ParentProcessId=$id" | ForEach-Object { $_.ProcessId }; $id; foreach ($k in $kids) { Tree $k } }
-function Snap { $ids = Tree $p.Id; $ps = $ids | ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }; [pscustomobject]@{ cpu = ($ps | Measure-Object TotalProcessorTime -Sum -Property TotalProcessorTime).Sum; n = @($ps).Count; mem = ($ps | Measure-Object WorkingSet64 -Sum).Sum; cpuS = ($ps | ForEach-Object { $_.TotalProcessorTime.TotalSeconds } | Measure-Object -Sum).Sum } }
+function Snap { $ids = Tree $p.Id; $ps = $ids | ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }; [pscustomobject]@{ n = @($ps).Count; mem = ($ps | Measure-Object WorkingSet64 -Sum).Sum; cpuS = ($ps | ForEach-Object { $_.TotalProcessorTime.TotalSeconds } | Measure-Object -Sum).Sum } }
 $a = Snap; Start-Sleep -Seconds $Span; $b = Snap
 $cores = [Environment]::ProcessorCount
 $pct = [Math]::Round((($b.cpuS - $a.cpuS) / $Span / $cores) * 100, 2)
