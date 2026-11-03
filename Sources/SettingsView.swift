@@ -242,6 +242,16 @@ struct SettingsView: View {
             }
         }
         .modifier(pill("login"))
+        pickerCard(symbol: "rectangle.expand.vertical", title: "Open tile", subtitle: "The tile that is already open when you open the panel. Stats remembers it.", tint: t) {
+            let keys = [""] + ModuleID.allCases.filter { prefs.shown.contains($0) }.map(\.rawValue)
+            let half = (keys.count + 1) / 2
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach([Array(keys[..<half]), Array(keys[half...])].filter { !$0.isEmpty }, id: \.self) { row in
+                    ChipRow(options: row, selected: prefs.openTab, label: { $0.isEmpty ? "None" : (ModuleID(rawValue: $0)?.title ?? $0) }, tint: t) { prefs.openTab = $0 }
+                }
+            }
+        }
+        .modifier(pill("opentab"))
         SettingRow(symbol: "bell.badge.fill", title: "Alerts", subtitle: "Tell me when the battery is low, storage is nearly full or memory is squeezed.", tint: Pal.rose) {
             SmoothSwitch(isOn: prefs.alerts, title: "Alerts", tint: Pal.rose) { prefs.alerts = $0 }
         }

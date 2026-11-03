@@ -144,7 +144,8 @@ enum Log {
         shownFrom = button
         // Read fresh numbers and build the panel at its final size before it appears: a panel shown first and sized
         // afterwards drew its contents small in the top-left corner for a frame, then jumped into place.
-        monitor.expanded = module
+        monitor.allSensors = false
+        monitor.expanded = module ?? ModuleID(rawValue: prefs.openTab)
         updateVisible(panel: true)
         ensureContent()
         if let host = popover.contentViewController?.view {
@@ -168,7 +169,7 @@ enum Log {
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self, self.popover.isShown, e.keyCode == 53 else { return e }   // esc
-            if self.monitor.expanded != nil { self.monitor.expanded = nil } else { self.closePopover() }
+            if self.monitor.allSensors { self.monitor.allSensors = false } else if self.monitor.expanded != nil { self.monitor.expanded = nil } else { self.closePopover() }
             return nil
         }
         Log.write("panel opened from \(module?.rawValue ?? "main")")
@@ -331,6 +332,8 @@ enum Log {
             if p.count > 1, p[1] == "reset" { nav.current = nil; nav.tab = .look }
             else if p.count > 1, p[1] == "tab", p.count > 2, let n = Int(p[2]), let t = SettingsTab(rawValue: n) { nav.tab = t }
             else if p.count > 1, let k = keys[p[1]] { nav.key(k) }
+        case "allsensors": monitor.allSensors = p.count > 1 && p[1] == "1"
+        case "opentab": prefs.openTab = p.count > 1 ? p[1] : ""
         case "speedtest": monitor.speed.start()
         case "state": writeState()
         case "realclick": status.mainItem.button?.performClick(nil)

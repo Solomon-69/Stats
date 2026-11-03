@@ -127,6 +127,8 @@ enum MainIcon: String, CaseIterable, Identifiable {
 final class Prefs: ObservableObject {
     private let d = UserDefaults.standard
     @Published var shown: Set<ModuleID> { didSet { d.set(shown.map(\.rawValue), forKey: "shown") } }
+    /// The tile that opens by itself each time the panel opens ("" = none). Chosen in Settings, remembered between launches.
+    @Published var openTab: String { didSet { d.set(openTab, forKey: "openTab") } }
     @Published var refresh: Int { didSet { d.set(refresh, forKey: "refresh") } }
     @Published var fahrenheit: Bool { didSet { d.set(fahrenheit, forKey: "fahrenheit") } }
     @Published var netBits: Bool { didSet { d.set(netBits, forKey: "netBits") } }
@@ -164,6 +166,7 @@ final class Prefs: ObservableObject {
         // Stats has one menu bar icon. Older versions could add one per module: forget those choices for good.
         d.removeObject(forKey: "barStyles")
         refresh = d.object(forKey: "refresh") as? Int ?? 2
+        openTab = d.string(forKey: "openTab") ?? ""
         fahrenheit = d.bool(forKey: "fahrenheit")
         // Internet speeds are quoted in megabits a second everywhere (phone testers, providers), so that is the default.
         netBits = d.object(forKey: "netBits") as? Bool ?? true
@@ -228,6 +231,8 @@ final class Monitor: ObservableObject {
         return ProcessInfo.processInfo.isLowPowerModeEnabled ? max(5, TimeInterval(prefs.refresh)) : TimeInterval(max(1, prefs.refresh))
     }
     @Published var expanded: ModuleID?
+    /// The Temperature tile's "Show all sensors" view: that one tile fills the panel so as many sensors as possible show.
+    @Published var allSensors = false
     @Published var openCount = 0
 
     private var timer: Timer?

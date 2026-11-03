@@ -17,6 +17,8 @@ struct PanelView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     static let width: CGFloat = 380
     static let maxListHeight: CGFloat = 560
+    /// With every sensor listed the panel grows to the screen (minus room for the header, footer and menu bar).
+    private var listLimit: CGFloat { monitor.allSensors ? max(Self.maxListHeight, (NSScreen.main?.visibleFrame.height ?? 800) - 190) : Self.maxListHeight }
 
     var body: some View {
         let modules = monitor.panelModules
@@ -27,12 +29,19 @@ struct PanelView: View {
                     ScrollView(showsIndicators: false) {
                         cards(modules).background(GeometryReader { Color.clear.preference(key: HeightKey.self, value: $0.size.height) })
                     }
-                    .frame(height: min(contentHeight, Self.maxListHeight))
+                    .frame(height: min(contentHeight, listLimit))
                     .scrollBounceBehavior(.basedOnSize)
                     .onPreferenceChange(HeightKey.self) { contentHeight = $0 }
+                    // Showing every sensor lists the Temperature tile from its top; hiding them puts the tile back at the bottom, half open.
+                    .onChange(of: monitor.allSensors) { _, all in
+                        guard let open = monitor.expanded else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                            withAnimation(reduceMotion ? nil : panelSpring) { proxy.scrollTo(open, anchor: all ? .top : nil) }
+                        }
+                    }
                     // An opened tile near the bottom would be cut off, so once it has grown, scroll just enough to show all of it.
                     .onChange(of: monitor.expanded) { _, open in
-                        guard let open else { return }
+                        guard let open else { monitor.allSensors = false; return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
                             withAnimation(reduceMotion ? nil : panelSpring) { proxy.scrollTo(open, anchor: nil) }
                         }
@@ -59,7 +68,9 @@ struct PanelView: View {
             stride(from: list.startIndex, to: list.endIndex, by: 2).map { Array(list[$0..<min($0 + 2, list.endIndex)]) }
         }
         var rows: [[ModuleID]]
-        if let open = monitor.expanded, let i = modules.firstIndex(of: open) {
+        if monitor.allSensors, let open = monitor.expanded, modules.contains(open) {
+            rows = [[open]]
+        } else if let open = monitor.expanded, let i = modules.firstIndex(of: open) {
             let others = modules.filter { $0 != open }
             let at = min(i - i % 2, others.count)
             rows = pairs(others[..<at]) + [[open]] + pairs(others[at...])
@@ -308,7 +319,6 @@ private struct AppList: View {
 struct ModuleDetail: View {
     let module: ModuleID
     @ObservedObject var monitor: Monitor
-    @State private var showAllSensors = false
 
     /// Apple chips have fast and efficient cores; the efficient ones come first.
     private var coresTitle: String {
@@ -474,15 +484,17 @@ struct ModuleDetail: View {
         let groups = Dictionary(grouping: monitor.temps, by: \.group)
         let order = ["Processor", "Graphics", "Memory", "Storage", "Battery", "Case", "Power chip", "Other"]
         return VStack(alignment: .leading, spacing: 8) {
-            ForEach(order.filter { groups[$0] != nil }, id: \.self) { g in
-                let list = groups[g] ?? []
-                let hot = list.map(\.celsius).max() ?? 0
-                KV(key: g, value: "\(monitor.temp(hot)) · \(Monitor.tempWord(hot))", tint: Monitor.tempTint(hot))
+            if !monitor.allSensors {
+                ForEach(order.filter { groups[$0] != nil }, id: \.self) { g in
+                    let list = groups[g] ?? []
+                    let hot = list.map(\.celsius).max() ?? 0
+                    KV(key: g, value: "\(monitor.temp(hot)) · \(Monitor.tempWord(hot))", tint: Monitor.tempTint(hot))
+                }
             }
-            Button(showAllSensors ? "Hide all sensors" : "Show all \(monitor.temps.count) sensors") {
-                withAnimation(panelSpring) { showAllSensors.toggle() }
+            Button(monitor.allSensors ? "Hide all sensors" : "Show all \(monitor.temps.count) sensors") {
+                withAnimation(panelSpring) { monitor.allSensors.toggle() }
             }.buttonStyle(QuietButtonStyle())
-            if showAllSensors {
+            if monitor.allSensors {
                 ForEach(monitor.temps) { s in KV(key: s.raw, value: monitor.temp(s.celsius)) }
             }
         }
