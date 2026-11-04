@@ -15,6 +15,18 @@ struct CPUInfo {
 
 final class CPUReader {
     private var prev: [[UInt32]] = []
+    private var prevHost: (UInt32, UInt32, UInt32, UInt32)?
+
+    /// (user, system, idle, nice) ticks for the whole machine (HOST_CPU_LOAD_INFO).
+    private func hostLoad() -> (UInt32, UInt32, UInt32, UInt32)? {
+        var info = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.stride / MemoryLayout<integer_t>.stride)
+        let r = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count) }
+        }
+        guard r == KERN_SUCCESS else { return nil }
+        return (info.cpu_ticks.0, info.cpu_ticks.1, info.cpu_ticks.2, info.cpu_ticks.3)
+    }
 
     func sample() -> CPUInfo? {
         var count: natural_t = 0
@@ -31,20 +43,25 @@ final class CPUReader {
         for i in 0..<Int(count) {
             now.append((0..<stride).map { UInt32(bitPattern: info[i * stride + $0]) })
         }
-        defer { prev = now }
+        let host = hostLoad(), lastHost = prevHost
+        defer { prev = now; prevHost = host ?? prevHost }
         guard prev.count == now.count else { return nil }
         var out = CPUInfo()
-        var sumU = 0.0, sumS = 0.0, sumAll = 0.0
         for i in 0..<now.count {
             let u = Double(now[i][Int(CPU_STATE_USER)] &- prev[i][Int(CPU_STATE_USER)])
             let s = Double(now[i][Int(CPU_STATE_SYSTEM)] &- prev[i][Int(CPU_STATE_SYSTEM)])
             let idle = Double(now[i][Int(CPU_STATE_IDLE)] &- prev[i][Int(CPU_STATE_IDLE)])
             let n = Double(now[i][Int(CPU_STATE_NICE)] &- prev[i][Int(CPU_STATE_NICE)])
             let all = u + s + idle + n
-            out.cores.append(all > 0 ? (u + s + n) / all : 0)
-            sumU += u + n; sumS += s; sumAll += all
+            out.cores.append(all > 0 ? min(1, (u + s + n) / all) : 0)
         }
-        if sumAll > 0 { out.user = sumU / sumAll; out.system = sumS / sumAll; out.total = out.user + out.system }
+        // Whole-machine figure from the host's own load counters, as exelban/stats does: total = user + system
+        // (nice time is in the tick total but not in "in use", the same split `top` prints).
+        if let host, let p = lastHost {
+            let u = Double(host.0 &- p.0), s = Double(host.1 &- p.1), idle = Double(host.2 &- p.2), n = Double(host.3 &- p.3)
+            let all = u + s + idle + n
+            if all > 0 { out.user = u / all; out.system = s / all; out.total = out.user + out.system }
+        }
         var l = [Double](repeating: 0, count: 3)
         getloadavg(&l, 3)
         out.load1 = l[0]; out.load5 = l[1]; out.load15 = l[2]
@@ -81,13 +98,18 @@ final class MemReader {
         guard r == KERN_SUCCESS else { return nil }
         var m = MemInfo()
         m.total = total
-        let internalPages = Double(st.internal_page_count), purgeable = Double(st.purgeable_count)
-        m.app = max(0, internalPages - purgeable) * pageSize
-        m.wired = Double(st.wire_count) * pageSize
-        m.compressed = Double(st.compressor_page_count) * pageSize
-        m.cached = (Double(st.external_page_count) + purgeable) * pageSize
-        m.free = Double(st.free_count) * pageSize
-        m.used = m.app + m.wired + m.compressed
+        // exelban/stats formula: used = active + inactive + speculative + wired + compressed - purgeable - external,
+        // app = used - wired - compressed, cache = purgeable + external, free = total - used.
+        let pg = pageSize
+        let active = Double(st.active_count) * pg, inactive = Double(st.inactive_count) * pg
+        let speculative = Double(st.speculative_count) * pg
+        let purgeable = Double(st.purgeable_count) * pg, external = Double(st.external_page_count) * pg
+        m.wired = Double(st.wire_count) * pg
+        m.compressed = Double(st.compressor_page_count) * pg
+        m.used = max(0, active + inactive + speculative + m.wired + m.compressed - purgeable - external)
+        m.app = max(0, m.used - m.wired - m.compressed)
+        m.cached = purgeable + external
+        m.free = max(0, total - m.used)
         var level: Int32 = 1; var ls = MemoryLayout<Int32>.stride
         if sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &ls, nil, 0) == 0 { m.pressure = Int(level) }
         var sw = xsw_usage(); var ss = MemoryLayout<xsw_usage>.stride
@@ -220,7 +242,7 @@ final class NetReader {
                     if if_indextoname(UInt32(m.ifm_index), &nameBuf) != nil {
                         let name = String(cString: nameBuf)
                         let up = (Int32(m.ifm_flags) & IFF_UP) != 0 && (Int32(m.ifm_flags) & IFF_LOOPBACK) == 0
-                        if name.hasPrefix("en"), up { out[name] = (m.ifm_data.ifi_ibytes, m.ifm_data.ifi_obytes) }
+                        if up { out[name] = (m.ifm_data.ifi_ibytes, m.ifm_data.ifi_obytes) }
                     }
                 }
                 off += msgLen
@@ -229,10 +251,20 @@ final class NetReader {
         return out
     }
 
+    /// The interface macOS routes internet traffic through (Wi-Fi, Ethernet, a VPN tunnel), as exelban/stats reads it.
+    private func primaryInterface() -> String? {
+        guard let g = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any] else { return nil }
+        return g["PrimaryInterface"] as? String
+    }
+
     func sample() -> NetInfo {
         var n = NetInfo()
         let now = ProcessInfo.processInfo.systemUptime
-        let c = counters()
+        // Only the primary interface is counted (exelban/stats default); summing every interface double-counts
+        // traffic that passes through a VPN tunnel and its Wi-Fi carrier. Without a primary, all en* interfaces.
+        let all = counters()
+        let primary = primaryInterface()
+        let c = primary.flatMap { p in all[p].map { [p: $0] } } ?? all.filter { $0.key.hasPrefix("en") }
         var busiest: (name: String, bytes: Double)?
         var rx = 0.0, tx = 0.0
         if now > lastAt, lastAt > 0 {
@@ -240,7 +272,11 @@ final class NetReader {
             for (name, v) in c {
                 guard let p = last[name] else { continue }
                 // A counter that went backwards (interface reset) counts as nothing, never as a huge number.
-                let dRx = v.rx >= p.rx ? v.rx - p.rx : 0, dTx = v.tx >= p.tx ? v.tx - p.tx : 0
+                var dRx = v.rx >= p.rx ? v.rx - p.rx : 0, dTx = v.tx >= p.tx ? v.tx - p.tx : 0
+                // Drop one-shot counter jumps (reconnects) above what any link can carry: 100 Gbps, as exelban/stats does.
+                let cap = UInt64(12_500_000_000 * dt)
+                if dRx > cap { dRx = 0 }
+                if dTx > cap { dTx = 0 }
                 let dr = Double(dRx) / dt, dt2 = Double(dTx) / dt
                 rx += dr; tx += dt2
                 sumDown += Double(dRx); sumUp += Double(dTx)
@@ -250,7 +286,7 @@ final class NetReader {
         last = c; lastAt = now
         n.downBps = rx; n.upBps = tx
         n.downTotal = sumDown; n.upTotal = sumUp
-        let ip = localAddress(preferring: busiest?.name)
+        let ip = localAddress(preferring: primary ?? busiest?.name)
         n.address = ip.address
         n.interface = ip.name
         n.kind = kinds[ip.name] ?? (ip.name.isEmpty ? "" : "Network")

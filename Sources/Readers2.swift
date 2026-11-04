@@ -72,6 +72,20 @@ final class BatteryReader {
         }
     }
 
+    /// Battery temperature, with exelban/stats' fallbacks: the registry figure (gone on newer macOS), the battery pack's
+    /// own data, then the average of the SMC battery sensors TB1T/TB2T.
+    private static func temperature(_ p: [String: Any]) -> Double? {
+        if let t = num(p["Temperature"]), t.isFinite, t > 0 { return t / 100 }
+        let pack = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceNameMatching("AppleSmartBatteryPack"))
+        if pack != 0 {
+            defer { IOObjectRelease(pack) }
+            if let d = IORegistryEntryCreateCFProperty(pack, "BatteryData" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any],
+               let t = num(d["Temperature"]), t.isFinite, t > 0 { return t / 100 }
+        }
+        let smc = ["TB1T", "TB2T"].compactMap { SMC.shared.value($0) }.filter { $0.isFinite && $0 > 0 }
+        return smc.isEmpty ? nil : smc.reduce(0, +) / Double(smc.count)
+    }
+
     func sample() -> BatteryInfo? {
         Self.refreshSystemHealth()
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
@@ -79,7 +93,10 @@ final class BatteryReader {
         defer { IOObjectRelease(service) }
         guard let p = registryProps(service) else { return nil }
         var b = BatteryInfo()
-        if let cur = num(p["CurrentCapacity"]), let max = num(p["MaxCapacity"]), max > 0 {
+        // Charge level from the power-source service (the figure the battery menu and `pmset -g batt` show), as exelban/stats reads it.
+        if let lvl = Self.systemMinutes("Current Capacity"), let mx = Self.systemMinutes("Max Capacity"), mx > 0 {
+            b.percent = lvl / mx * 100
+        } else if let cur = num(p["CurrentCapacity"]), let max = num(p["MaxCapacity"]), max > 0 {
             // On Apple chips CurrentCapacity is already a percentage.
             b.percent = max <= 100 ? cur : cur / max * 100
         }
@@ -93,7 +110,7 @@ final class BatteryReader {
             let now = num(data["NominalChargeCapacity"]) ?? num(p["NominalChargeCapacity"]) ?? num(p["AppleRawMaxCapacity"]) ?? num(data["AppleRawMaxCapacity"])
             if let now, now > 100 { b.health = min(1, now / design) }
         }
-        if let t = num(p["Temperature"]) { b.temperatureC = t / 100 }
+        b.temperatureC = Self.temperature(p)
         b.newMAh = num(p["DesignCapacity"]) ?? num(data["DesignCapacity"])
         // What a full charge holds right now, as the battery itself measures it (not worked out from the rounded health %).
         b.holdsMAh = num(data["FullChargeCapacity"]) ?? num(p["AppleRawMaxCapacity"]) ?? num(data["AppleRawMaxCapacity"]) ?? num(data["NominalChargeCapacity"])
@@ -197,25 +214,33 @@ struct FanReading: Identifiable {
 }
 
 final class SensorReader {
-    /// Temperatures. Apple chips are read through the hidden sensor service; Intel Macs through the system controller.
+    /// Last good reading per processor key: some M2 core keys briefly report nonsense, and exelban/stats keeps the old value then.
+    private var lastGood: [String: Double] = [:]
+
+    /// Temperatures, read like exelban/stats: the chip's own SMC keys (real per-core CPU and GPU temperatures) first;
+    /// the hidden HID sensor service (power-chip dies only) is a fallback when the SMC gives nothing.
     func temperatures() -> [SensorReading] {
         var out: [SensorReading] = []
-        let hid = AppleSiliconSensors(0xff00, 5, 15) as? [String: NSNumber] ?? [:]
-        for (name, v) in hid {
-            let c = v.doubleValue
-            guard c > 0, c < 150 else { continue }
-            let (group, label) = Self.friendly(name)
-            out.append(SensorReading(raw: name, label: label, group: group, celsius: c))
-        }
-        if out.isEmpty, SMC.shared.isAvailable {
-            let keys: [(String, String, String)] = [("TC0P", "Processor", "Processor"), ("TC0D", "Processor die", "Processor"),
-                ("TG0P", "Graphics", "Graphics"), ("TB0T", "Battery", "Battery"), ("TM0P", "Memory", "Memory"),
-                ("Ts0P", "Palm rest", "Case"), ("TA0P", "Air inlet", "Case")]
-            for (k, label, group) in keys {
-                if let v = SMC.shared.value(k), v > 0, v < 150 { out.append(SensorReading(raw: k, label: label, group: group, celsius: v)) }
+        if SMC.shared.isAvailable {
+            for k in SensorKeys.list(for: ChipGen.current) {
+                guard var v = SMC.shared.value(k.key) else { continue }
+                if k.group == "Processor" {
+                    if v < 10 || v > 120 { guard let old = lastGood[k.key] else { continue }; v = old } else { lastGood[k.key] = v }
+                }
+                guard v > 0, v <= 110 else { continue }
+                out.append(SensorReading(raw: k.label, label: k.label, group: k.group, celsius: v))
             }
         }
-        return out.sorted { ($0.group, $0.label) < ($1.group, $1.label) }
+        if out.isEmpty {
+            let hid = AppleSiliconSensors(0xff00, 5, 15) as? [String: NSNumber] ?? [:]
+            for (name, v) in hid {
+                let c = v.doubleValue
+                guard c > 0, c < 110 else { continue }
+                let (group, label) = Self.friendly(name)
+                out.append(SensorReading(raw: name, label: label, group: group, celsius: c))
+            }
+        }
+        return out.sorted { $0.group != $1.group ? $0.group < $1.group : $0.label.localizedStandardCompare($1.label) == .orderedAscending }
     }
 
     static func friendly(_ raw: String) -> (String, String) {

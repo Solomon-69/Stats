@@ -390,10 +390,11 @@ final class Monitor: ObservableObject {
 
     func temp(_ c: Double) -> String { prefs.fahrenheit ? "\(Int((c * 9 / 5 + 32).rounded()))°F" : "\(Int(c.rounded()))°C" }
     func hottest() -> Double? { temps.map(\.celsius).max() }
-    /// The one temperature shown everywhere (tile, menu bar, graph, header): the hottest processor sensor.
+    /// The one temperature shown everywhere (tile, menu bar, graph, header): the average of the processor core sensors,
+    /// the same "Average CPU" figure exelban/stats shows for its CPU temperature.
     func processorTemp() -> Double? {
         let p = temps.filter { $0.group == "Processor" }.map(\.celsius)
-        return p.max()
+        return p.isEmpty ? nil : p.reduce(0, +) / Double(p.count)
     }
     /// That figure, or nil when it is stale (sensors are not read while the panel is closed), so old numbers never colour the header or icon.
     var mainTemp: Double? {
