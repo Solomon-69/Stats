@@ -52,6 +52,8 @@ final class BatteryReader {
     /// background at most every six hours; nil until the first answer arrives.
     private static var systemHealth: Double?
     private static var healthAt: Date?
+    /// True when System Settings' figure could not be read, so the raw registry estimate is shown instead.
+    private static var systemHealthFailed = false
     private static func refreshSystemHealth() {
         if let at = healthAt, Date().timeIntervalSince(at) < 6 * 3600 { return }
         healthAt = Date()
@@ -60,12 +62,12 @@ final class BatteryReader {
             p.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
             p.arguments = ["SPPowerDataType"]
             let pipe = Pipe(); p.standardOutput = pipe; p.standardError = FileHandle.nullDevice
-            guard (try? p.run()) != nil else { return }
+            guard (try? p.run()) != nil else { DispatchQueue.main.async { systemHealthFailed = true }; return }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             p.waitUntilExit()
             guard let text = String(data: data, encoding: .utf8),
                   let r = text.range(of: #"Maximum Capacity:\s*(\d+)%"#, options: .regularExpression),
-                  let n = Double(text[r].filter(\.isNumber)) else { return }
+                  let n = Double(text[r].filter(\.isNumber)) else { DispatchQueue.main.async { systemHealthFailed = true }; return }
             DispatchQueue.main.async { systemHealth = n / 100 }
         }
     }
@@ -96,6 +98,8 @@ final class BatteryReader {
         b.holdsMAh = num(data["NominalChargeCapacity"]) ?? num(p["NominalChargeCapacity"]) ?? num(p["AppleRawMaxCapacity"]) ?? num(data["AppleRawMaxCapacity"])
         // Prefer the figure System Settings shows, and keep the mAh line consistent with it.
         if let h = Self.systemHealth, let n = b.newMAh, n > 100 { b.health = h; b.holdsMAh = h * n }
+        // Until that figure arrives, show nothing rather than the raw estimate (measured 4 Nov: raw 88%, System Settings 86%).
+        else if Self.systemHealth == nil, !Self.systemHealthFailed { b.health = nil; b.holdsMAh = nil }
         if let v = num(p["Voltage"]) { b.volts = v / 1000 }
         if let a = (p["Amperage"] as? NSNumber)?.int64Value, let v = num(p["Voltage"]) {
             b.watts = abs(Double(a)) * v / 1_000_000
@@ -111,13 +115,15 @@ final class BatteryReader {
             }
             let cap = num(data["AppleRawMaxCapacity"]) ?? num(p["AppleRawMaxCapacity"]) ?? 0
             let have = num(data["AppleRawCurrentCapacity"]) ?? num(p["AppleRawCurrentCapacity"]) ?? 0
-            if let i = ampEMA, i >= 50, cap > 500, have > 0, have <= cap {
+            // macOS's own estimate first (the figure the battery menu shows); own estimate only as a backup.
+            if let m = Self.systemMinutes("Time to Full Charge"), m > 0, m < 65535 { b.secondsLeft = m * 60 }
+            else if let t = num(p["AvgTimeToFull"]), t > 0, t < 65535 { b.secondsLeft = t * 60 }
+            else if let i = ampEMA, i >= 50, cap > 500, have > 0, have <= cap {
                 let toTop = cap - have
                 let knee = cap * 0.8
                 let hours = have < knee ? (knee - have) / i + (cap - knee) / (i * 0.65) : toTop / (i * 0.65)
                 b.secondsLeft = min(hours, 24) * 3600
-            } else if let m = Self.systemMinutes("Time to Full Charge"), m > 0, m < 65535 { b.secondsLeft = m * 60 }
-            else if let t = num(p["AvgTimeToFull"]), t > 0, t < 65535 { b.secondsLeft = t * 60 }
+            }
         } else if !b.pluggedIn {
             // Charge still inside the battery divided by the smoothed current flowing out of it right now.
             let now = ProcessInfo.processInfo.systemUptime
@@ -127,7 +133,9 @@ final class BatteryReader {
                 drainAt = now
             }
             let have = num(data["AppleRawCurrentCapacity"]) ?? num(p["AppleRawCurrentCapacity"]) ?? 0
-            if let t = num(p["AvgTimeToEmpty"]), t > 0, t < 65535 {
+            if let m = Self.systemMinutes("Time to Empty"), m > 0, m < 65535 {
+                b.secondsLeft = m * 60   // macOS's own figure, the one the battery menu shows
+            } else if let t = num(p["AvgTimeToEmpty"]), t > 0, t < 65535 {
                 // The battery's own gauge chip works this out from its measured current: the same figure other battery tools show.
                 b.secondsLeft = t * 60
             } else if let out = drainEMA, drainN >= 4, out >= 50, have > 0 {
