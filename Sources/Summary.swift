@@ -29,7 +29,7 @@ extension Monitor {
         case .cpu:
             let top = topByCPU(1).first
             let name = top.map { $0.name.count > 15 ? String($0.name.prefix(14)) + "…" : $0.name }
-            let sub = (top != nil && top!.cpu > 0.08) ? "Busiest: \(name!)" : "Mostly resting"
+            let sub = (top != nil && top!.cpu > 0.08) ? "Busiest: \(name!)" : (cpu.total >= 0.3 ? "Busy with macOS tasks" : "Mostly resting")
             return Summary(value: Fmt.pct(cpu.total), subtitle: sub)
         case .gpu:
             let chip = gpuName.isEmpty ? "Graphics chip" : gpuName

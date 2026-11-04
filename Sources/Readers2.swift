@@ -95,11 +95,12 @@ final class BatteryReader {
         }
         if let t = num(p["Temperature"]) { b.temperatureC = t / 100 }
         b.newMAh = num(p["DesignCapacity"]) ?? num(data["DesignCapacity"])
-        b.holdsMAh = num(data["NominalChargeCapacity"]) ?? num(p["NominalChargeCapacity"]) ?? num(p["AppleRawMaxCapacity"]) ?? num(data["AppleRawMaxCapacity"])
-        // Prefer the figure System Settings shows, and keep the mAh line consistent with it.
-        if let h = Self.systemHealth, let n = b.newMAh, n > 100 { b.health = h; b.holdsMAh = h * n }
+        // What a full charge holds right now, as the battery itself measures it (not worked out from the rounded health %).
+        b.holdsMAh = num(data["FullChargeCapacity"]) ?? num(p["AppleRawMaxCapacity"]) ?? num(data["AppleRawMaxCapacity"]) ?? num(data["NominalChargeCapacity"])
+        // Health: the figure System Settings shows.
+        if let h = Self.systemHealth { b.health = h }
         // Until that figure arrives, show nothing rather than the raw estimate (measured 4 Nov: raw 88%, System Settings 86%).
-        else if Self.systemHealth == nil, !Self.systemHealthFailed { b.health = nil; b.holdsMAh = nil }
+        else if Self.systemHealth == nil, !Self.systemHealthFailed { b.health = nil }
         if let v = num(p["Voltage"]) { b.volts = v / 1000 }
         if let a = (p["Amperage"] as? NSNumber)?.int64Value, let v = num(p["Voltage"]) {
             b.watts = abs(Double(a)) * v / 1_000_000
