@@ -42,13 +42,6 @@ struct PanelView: View {
                         }
                     }
                     // An opened tile near the bottom would be cut off, so once it has grown, scroll just enough to show all of it.
-                    // Starting a speed test: make sure the whole test card is on screen.
-                    .onReceive(monitor.speed.$phase.removeDuplicates()) { p in
-                        guard p == .ping, monitor.expanded == .network else { return }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            withAnimation(reduceMotion ? nil : panelSpring) { proxy.scrollTo("speedcard", anchor: .bottom) }
-                        }
-                    }
                     .onChange(of: monitor.expanded) { _, open in
                         guard let open else { monitor.allSensors = false; return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {

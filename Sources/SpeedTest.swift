@@ -27,6 +27,7 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
     private let lock = NSLock()
     private var bytes = 0                 // bytes moved in the current phase
     private var session: URLSession?
+    private let gate = NSLock()   // cancel() and task creation never overlap: a task made in a closed session raises and aborts the app
     private var runID = 0
     private var downURL = URL(string: "https://speed.cloudflare.com/__down?bytes=25000000")!
     private static let cloudflareDown = URL(string: "https://speed.cloudflare.com/__down?bytes=25000000")!
@@ -39,15 +40,14 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
 
     func start() {
         guard !running else { return }
-        runID += 1
-        let id = runID
+        gate.lock(); runID += 1; let id = runID; gate.unlock()
         downMbps = nil; upMbps = nil; pingMs = nil; liveMbps = 0; progress = 0
         phase = .ping
         let cfg = URLSessionConfiguration.ephemeral
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         cfg.timeoutIntervalForRequest = 15
         cfg.httpMaximumConnectionsPerHost = Self.streams
-        session = URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
+        gate.lock(); session = URLSession(configuration: cfg, delegate: self, delegateQueue: nil); gate.unlock()
         Task { [weak self] in
             guard let self else { return }
             await self.ping(id)
@@ -64,13 +64,17 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
                 self.upMbps = up; self.liveMbps = 0; self.progress = 1
                 self.phase = (down == nil && up == nil) ? .failed : .done
             }
-            self.session?.invalidateAndCancel(); self.session = nil
+            self.gate.lock()
+            if id == self.runID { self.session?.invalidateAndCancel(); self.session = nil }
+            self.gate.unlock()
         }
     }
 
     func cancel() {
+        gate.lock()
         runID += 1
         session?.invalidateAndCancel(); session = nil
+        gate.unlock()
         phase = .idle; liveMbps = 0; progress = 0
     }
 
@@ -102,21 +106,23 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
         await MainActor.run { self.pingMs = best }
     }
 
+    /// Makes a task only while this run is still the current one and its session is open.
+    private func makeTask(_ s: URLSession, _ id: Int, _ p: Phase, _ body: Data) -> URLSessionTask? {
+        gate.lock(); defer { gate.unlock() }
+        guard id == runID, session === s else { return nil }
+        if p == .down { return s.dataTask(with: downURL) }
+        var r = URLRequest(url: URL(string: "https://speed.cloudflare.com/__up")!)
+        r.httpMethod = "POST"
+        return s.uploadTask(with: r, from: body)
+    }
+
     /// Moves data on several connections for a few seconds and returns the speed, ignoring the first second (ramp-up).
     private func measure(_ id: Int, phase p: Phase) async -> Double? {
         guard let s = session else { return nil }
         lock.lock(); bytes = 0; lock.unlock()
         var tasks: [URLSessionTask] = []
         let body = Data(count: 8_000_000)
-        for _ in 0..<Self.streams {
-            if p == .down {
-                tasks.append(s.dataTask(with: downURL))
-            } else {
-                var r = URLRequest(url: URL(string: "https://speed.cloudflare.com/__up")!)
-                r.httpMethod = "POST"
-                tasks.append(s.uploadTask(with: r, from: body))
-            }
-        }
+        for _ in 0..<Self.streams { if let t = makeTask(s, id, p, body) { tasks.append(t) } }
         tasks.forEach { $0.resume() }
         let t0 = Date()
         var mark: (t: Date, b: Int)?
@@ -131,14 +137,7 @@ final class SpeedTest: NSObject, ObservableObject, URLSessionDataDelegate {
             if mark == nil, now.timeIntervalSince(t0) >= 1 { mark = (now, b) }
             // A task that finished is replaced so the line stays full for the whole test.
             for (i, t) in tasks.enumerated() where t.state == .completed {
-                let n: URLSessionTask
-                if p == .down { n = s.dataTask(with: downURL) }
-                else {
-                    var r = URLRequest(url: URL(string: "https://speed.cloudflare.com/__up")!)
-                    r.httpMethod = "POST"
-                    n = s.uploadTask(with: r, from: body)
-                }
-                n.resume(); tasks[i] = n
+                if let n = makeTask(s, id, p, body) { n.resume(); tasks[i] = n }
             }
         }
         tasks.forEach { $0.cancel() }
