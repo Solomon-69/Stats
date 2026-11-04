@@ -88,11 +88,11 @@ pm = sh("pmset -g batt")
 mp = re.search(r"(\d+)%", pm)
 if mp and s2.get("battery"):
     check("battery percent", near(s2["battery"]["percent"], int(mp.group(1)), 2), f"mine={s2['battery']['percent']} pmset={mp.group(1)}")
-    mt = re.search(r"(\d+):(\d+) remaining", pm)
-    if mt and s2["battery"]["secondsLeft"] > 0:
-        # our own estimate comes from the live charge current; macOS's number is only a loose guide (0.4x to 1.6x)
-        sysmin = int(mt.group(1)) * 60 + int(mt.group(2)); mine_min = s2["battery"]["secondsLeft"] / 60
-        check("battery time left", 0.4 * sysmin <= mine_min <= 1.6 * sysmin, f"mine={mine_min:.0f} min, macOS={sysmin} min")
+    # time left: the battery's own gauge figure (AvgTimeToEmpty, minutes) is what Stats shows while on battery
+    at = re.search(r'"AvgTimeToEmpty" = (\d+)', sh("ioreg -rn AppleSmartBattery"))
+    if at and 0 < int(at.group(1)) < 65535 and "discharging" in pm and s2["battery"]["secondsLeft"] > 0:
+        gauge = int(at.group(1)); mine_min = s2["battery"]["secondsLeft"] / 60
+        check("battery time left", 0.85 * gauge <= mine_min <= 1.15 * gauge, f"mine={mine_min:.0f} min, battery gauge={gauge} min")
     cyc = int(re.search(r'"CycleCount" = (\d+)', sh("ioreg -rn AppleSmartBattery")).group(1))
     check("battery cycles", s2["battery"]["cycles"] == cyc, f"{cyc}")
     check("battery health 50-100%", 0.5 <= s2["battery"]["health"] <= 1.0, f"{s2['battery']['health']:.2f}")
@@ -280,6 +280,36 @@ post("dock:1", 0.8); st1 = state()
 check("dock on -> regular policy", st1.get("activationPolicy") == "regular", str(st1.get("activationPolicy")))
 post("dock:0", 0.8); st2 = state()
 check("dock off -> accessory policy", st2.get("activationPolicy") == "accessory", str(st2.get("activationPolicy")))
+
+# ---- accuracy against the system's own numbers, sampled side by side for ~10 s (averages, because speeds are bursty)
+import statistics as _st
+def _net():
+    o = sh("netstat -ibI en0 | awk '$3 ~ /Link/ {print $7, $10; exit}'").split()
+    return (int(o[0]), int(o[1])) if len(o) == 2 else (0, 0)
+post("panel:cpu", 0.5)
+_io = subprocess.Popen("iostat -d -w 1 -c 11 disk0", shell=True, stdout=subprocess.PIPE, text=True)
+_n0, _t0 = _net(), time.time(); _rows = []
+for _k in range(9):
+    _rows.append(state()); time.sleep(0.6)
+_n1, _t1 = _net(), time.time(); _dt = _t1 - _t0
+_ios = [float(l.split()[2]) for l in _io.communicate()[0].strip().split("\n")[3:] if len(l.split()) >= 3]
+def _within(a, b, rel, absl): return abs(a - b) <= max(rel * max(a, b), absl)
+_nd = (_n1[0] - _n0[0]) / _dt; _nu = (_n1[1] - _n0[1]) / _dt
+_ad = _st.mean(r["netDown"] for r in _rows); _au = _st.mean(r["netUp"] for r in _rows)
+check("download speed matches netstat", _within(_ad, _nd, 0.5, 80e3), f"app {_ad/1e3:.0f} vs netstat {_nd/1e3:.0f} KB/s")
+check("upload speed matches netstat", _within(_au, _nu, 0.5, 40e3), f"app {_au/1e3:.0f} vs netstat {_nu/1e3:.0f} KB/s")
+_adisk = _st.mean(r["diskRead"] + r["diskWrite"] for r in _rows) / 1e6; _idisk = _st.mean(_ios) if _ios else 0
+check("disk activity matches iostat", _within(_adisk, _idisk, 0.6, 8), f"app {_adisk:.1f} vs iostat {_idisk:.1f} MB/s")
+_la = [float(x) for x in re.findall(r"[\d.]+", sh("sysctl -n vm.loadavg"))][:3]
+check("load average matches", all(abs(a - b) < 1.5 for a, b in zip(_rows[-1]["load"], _la)), f"app {_rows[-1]['load']} vs {_la}")
+_boot = int(re.search(r"sec = (\d+)", sh("sysctl -n kern.boottime")).group(1))
+check("uptime matches boot time", abs(_rows[-1]["uptime"] - (time.time() - _boot)) < 5, f"{_rows[-1]['uptime']:.0f} vs {time.time()-_boot:.0f}")
+_g = re.search(r'"Device Utilization %"=(\d+)', sh("ioreg -r -d 1 -w0 -c AGXAccelerator"))
+if _g: check("gpu matches ioreg", abs(_rows[-1]["gpu"] * 100 - int(_g.group(1))) <= 25, f"{_rows[-1]['gpu']*100:.0f} vs {_g.group(1)}")
+_sw = re.search(r"used = ([\d.]+)M", sh("sysctl -n vm.swapusage"))
+if _sw: check("swap matches vm.swapusage", abs(_rows[-1]["swapUsed"] / 1048576 - float(_sw.group(1))) < 150, f"{_rows[-1]['swapUsed']/1048576:.0f} vs {_sw.group(1)} MB")
+_bt = _rows[-1]["summary"]["bluetooth"]
+check("bluetooth tile never shows a made-up 0%", not (_bt["value"] == "0%" and _bt["subtitle"] == ""), str(_bt))
 
 print(f"\n{passes} passed, {len(fails)} failed")
 if fails: print("FAILED:", ", ".join(fails)); sys.exit(1)

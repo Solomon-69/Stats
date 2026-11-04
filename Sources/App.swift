@@ -368,6 +368,7 @@ enum Log {
             "diskTotal": m.disk.total, "diskFree": m.disk.free, "diskRead": m.disk.readBps, "diskWrite": m.disk.writeBps,
             "netDown": m.net.downBps, "netUp": m.net.upBps, "netKind": m.net.kind, "netAddr": m.net.address, "online": m.net.online,
             "temps": m.temps.map { ["name": $0.raw, "group": $0.group, "c": $0.celsius] }, "fans": m.fans.count, "gadgets": m.gadgets.map(\.name),
+            "topCPU": m.topByCPU(6).map { ["name": $0.name, "cpu": $0.cpu] }, "topMem": m.topByMemory(6).map { ["name": $0.name, "mem": $0.memory] },
             "ownCPU": m.ownCPU, "ownMemory": m.ownMemory, "shown": prefs.shown.map(\.rawValue).sorted(),
             "navCurrent": nav.current ?? "", "navTab": nav.tab.rawValue, "appearance": prefs.appearance, "themeIndex": prefs.themeIndex,
             "refresh": prefs.refresh, "fahrenheit": prefs.fahrenheit, "netBits": prefs.netBits, "invisibleIcon": prefs.invisibleIcon,

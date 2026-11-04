@@ -339,8 +339,8 @@ private struct SpeedTestRows: View {
             VStack(spacing: 0) {
                 Text(String(format: "%.0f", big.value))
                     .font(.mono(big.value >= 1000 ? 17 : 21, .semibold)).foregroundStyle(Pal.ink)
-                    .contentTransition(.numericText(value: big.value))
-                    .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: Int(big.value.rounded()))
+                    .contentTransition(.numericText())   // same roll as the tile numbers: digits drop in from the top, whichever way the value moves
+                    .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: Int(big.value.rounded()))
                     .lineLimit(1).minimumScaleFactor(0.6)
                 Text(big.unit).font(.mono(8)).foregroundStyle(speed.phase == .failed ? Pal.warn : Pal.mute)
                     .lineLimit(1).minimumScaleFactor(0.7)

@@ -127,7 +127,10 @@ final class BatteryReader {
                 drainAt = now
             }
             let have = num(data["AppleRawCurrentCapacity"]) ?? num(p["AppleRawCurrentCapacity"]) ?? 0
-            if let out = drainEMA, drainN >= 4, out >= 50, have > 0 {
+            if let t = num(p["AvgTimeToEmpty"]), t > 0, t < 65535 {
+                // The battery's own gauge chip works this out from its measured current: the same figure other battery tools show.
+                b.secondsLeft = t * 60
+            } else if let out = drainEMA, drainN >= 4, out >= 50, have > 0 {
                 b.secondsLeft = min(have / out, 48) * 3600
             } else {
                 let est = IOPSGetTimeRemainingEstimate()

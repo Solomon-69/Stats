@@ -56,7 +56,7 @@ extension Monitor {
             let avg = fans.isEmpty ? 0 : fans.map(\.rpm).reduce(0, +) / Double(fans.count)
             return Summary(value: "\(Int(avg.rounded())) rpm", subtitle: fans.count == 1 ? "1 fan" : "\(fans.count) fans")
         case .bluetooth:
-            let low = gadgets.map(\.percent).min() ?? 0
+            guard let low = gadgets.map(\.percent).min() else { return Summary(value: "None", subtitle: "No gadgets connected") }
             return Summary(value: "\(Int(low.rounded()))%", subtitle: gadgets.map(\.name).prefix(2).joined(separator: ", "))
         case .clock:
             let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none
