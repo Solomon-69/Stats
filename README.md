@@ -39,3 +39,5 @@ RELEASE=1 ./build.sh  # release build
 ## Credits
 
 The sensor and SMC reading code is ported from [exelban/stats](https://github.com/exelban/stats) (MIT). Everything else is written fresh.
+
+More free apps by Solomon: [Mac-Apps](https://solomon-69.github.io/Mac-Apps/)
