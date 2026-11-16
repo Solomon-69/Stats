@@ -12,6 +12,12 @@
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-5b8a5a?style=flat-square"></a>
 </p>
 
+<p>
+  <a href="https://github.com/Solomon-69/Stats/releases/latest/download/Stats.dmg"><img alt="Download for Mac" height="40" src="https://img.shields.io/badge/Download_for_Mac-1f1d1a?style=for-the-badge&logo=apple&logoColor=white"></a>
+  &nbsp;
+  <a href="https://github.com/Solomon-69/Stats/releases/latest/download/Stats-Setup.exe"><img alt="Download for Windows" height="40" src="https://img.shields.io/badge/Download_for_Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white"></a>
+</p>
+
 </div>
 
 Stats lives in your menu bar. Click it to see live tiles for the processor, graphics, memory, storage, disk activity, internet, battery, temperature, fans and Bluetooth gadgets. Each tile says what is going on in everyday words ("Plenty of room", "Mostly resting", "3 h 10 min left") and opens up for more detail.
