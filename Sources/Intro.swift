@@ -58,9 +58,7 @@ struct IntroView: View {
             footer
         }
         .padding(.horizontal, 22).padding(.top, 26).padding(.bottom, 16)
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Pal.panel))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Pal.line, lineWidth: 1))
-        .padding(16)
+        .padding(16)   // one layer: the content sits straight on the window background (no card)
         .frame(width: 456)
         .background(Pal.box.ignoresSafeArea())
         .foregroundStyle(Pal.ink)
