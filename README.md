@@ -7,7 +7,7 @@
 **How your Mac is doing, in plain words.**
 
 <p>
-  <a href="https://github.com/Solomon-69/Stats/releases/latest"><img alt="Version 1.0.13" src="https://img.shields.io/badge/version-1.0.13-454952?style=flat-square"></a>
+  <a href="https://github.com/Solomon-69/Stats/releases/latest"><img alt="Latest version" src="https://img.shields.io/github/v/release/Solomon-69/Stats?label=version&color=454952&style=flat-square"></a>
   <img alt="macOS 14 or later" src="https://img.shields.io/badge/macOS-14%2B-1f1d1a?style=flat-square&logo=apple&logoColor=white">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-5b8a5a?style=flat-square"></a>
 </p>
@@ -27,7 +27,7 @@ Stats lives in your menu bar. Click it to see live tiles for the processor, grap
 
 ## Install
 
-Download `Stats.dmg` (or `Stats-mac.zip`) from the [latest release](https://github.com/Solomon-69/Stats/releases/latest), open it and drag Stats to Applications. The app is signed and notarized by Apple.
+Download **[Stats.dmg](https://github.com/Solomon-69/Stats/releases/latest/download/Stats.dmg)** (or [Stats-mac.zip](https://github.com/Solomon-69/Stats/releases/latest/download/Stats-mac.zip)), open it and drag Stats to Applications. Or paste one line in Terminal: `curl -fsSL https://solomon-69.github.io/Mac-Apps/download/install.sh | bash -s stats`. The app is signed and notarized by Apple.
 
 ## Build from source
 

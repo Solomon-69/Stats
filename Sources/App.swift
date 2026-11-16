@@ -56,6 +56,7 @@ enum Log {
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        IconRefresh.onceForThisVersion()   // new icon shows after an update
         NSApp.setActivationPolicy(prefs.showInDock ? .regular : .accessory)
         if SMAppService.mainApp.status == .enabled { try? SMAppService.mainApp.register() }
         applyAppearance()

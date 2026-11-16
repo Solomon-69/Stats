@@ -108,6 +108,7 @@ enum UpdateFiles {
               plist["CFBundleIdentifier"] as? String == Bundle(url: bundle)?.bundleIdentifier else { throw Failure(why: "not a \(cfg.appName) app") }
         try? run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", newApp.path])
         _ = try FileManager.default.replaceItemAt(bundle, withItemAt: newApp)
+        IconRefresh.now(bundle)
     }
 
     /// Waits for this process to exit, then opens the (new) app again.
@@ -287,5 +288,32 @@ struct UpdateRow: View {
                 .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tint))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// New icon after an update. macOS caches an app's icon by its path and date. An update unzips the new app with the
+/// zip's old dates, so Finder, the Dock and Launchpad can keep showing the old icon. Stamping the bundle with today's
+/// date and re-registering it with LaunchServices makes macOS read the new icon.
+enum IconRefresh {
+    static let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+    static func now(_ app: URL) {
+        let p = app.path
+        guard app.pathExtension == "app", !p.contains("/AppTranslocation/"), !p.hasPrefix("/Volumes/") else { return }
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: p)
+        let r = Process(); r.executableURL = URL(fileURLWithPath: lsregister); r.arguments = ["-f", p]
+        r.standardOutput = FileHandle.nullDevice; r.standardError = FileHandle.nullDevice
+        if (try? r.run()) != nil { r.waitUntilExit() }
+        NSWorkspace.shared.noteFileSystemChanged(p)
+    }
+
+    /// Once per version, at launch: also fixes copies an older updater already swapped in.
+    static func onceForThisVersion() {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        let key = "iconRefreshedForVersion"
+        guard UserDefaults.standard.string(forKey: key) != v else { return }
+        UserDefaults.standard.set(v, forKey: key)
+        let app = Bundle.main.bundleURL
+        DispatchQueue.global(qos: .utility).async { now(app) }
     }
 }
