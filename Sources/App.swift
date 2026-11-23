@@ -39,6 +39,11 @@ enum Log {
 }
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+    /// Opening the app only adds the menu bar icon. macOS can send a "reopen" right as the app starts
+    /// (login, relaunch after an update, a second launch while it starts), so reopens in the first
+    /// seconds are ignored: Settings and the panel only open when the person asks for them.
+    private let launchedAt = Date()
+    private var justLaunched: Bool { Date().timeIntervalSince(launchedAt) < 5 }
     private let prefs = Prefs()
     private lazy var monitor = Monitor(prefs: prefs)
     private var status: StatusController!
@@ -93,6 +98,7 @@ enum Log {
 
     /// Opening Stats again from Finder or Spotlight shows the panel.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if justLaunched { return false }
         // With the icon hidden there is nothing to click, so opening Stats again opens Settings instead.
         if introWindow != nil { introWindow?.makeKeyAndOrderFront(nil); return false }
         if prefs.mainIcon == .hidden { openSettings() }
